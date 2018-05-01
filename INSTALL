@@ -1,3 +1,16 @@
+to get the system compiled you'll need GNU autotools
+
+once you've cloned the sources do
+
+1) autoreconf -fvi
+2) ./configure (I'd suggest with --silent --enable-silent-rules)
+3) make && sudo make install
+
+to successfully compile the system you'll need to have CLISP
+installed.
+
+Have fun
+
 Installation Instructions
 *************************
 
