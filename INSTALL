@@ -29,6 +29,13 @@ once you've cloned the sources do
 to successfully compile the system you'll need to have CLISP
 installed, see https://www.gnu.org/software/clisp/
 
+if you didn't change any configure options you'll end up
+with "genera" installed in /usr/local/bin.
+
+To get the beast running, there's actually a few ways - you may
+follow Seth Morabito's instruction on
+https://static.loomcom.com/genera/genera-install.html
+
 Have fun
 
 Installation Instructions
