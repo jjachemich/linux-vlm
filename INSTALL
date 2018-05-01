@@ -1,13 +1,33 @@
 to get the system compiled you'll need GNU autotools
 
+Where can I get the latest versions of these tools?
+Usually, from the software distribution of your system. But you can also install them yourself, if there is a newer release available. If you build them yourself, it is recommended to install them all under the same prefix (see How can I install software below my home directory?).
+
+The most recent stable releases can be found here:
+
+     http://ftp.gnu.org/gnu/autoconf/
+     http://ftp.gnu.org/gnu/automake/
+     http://ftp.gnu.org/gnu/libtool/
+Development is done with Git source code management. A wiki page on Savannah documents how to use Git. The development versions of the Autotools can be found here:
+
+     http://savannah.gnu.org/git/?group=autoconf
+     http://savannah.gnu.org/git/?group=automake
+     http://savannah.gnu.org/git/?group=libtool
+     http://savannah.gnu.org/git/?group=gnulib
+Nightly snapshot tarballs of the Libtool sources are linked from the Libtool home page.
+
+
+
 once you've cloned the sources do
 
 1) autoreconf -fvi
 2) ./configure (I'd suggest with --silent --enable-silent-rules)
 3) make && sudo make install
 
+./configure --help will show some build options
+
 to successfully compile the system you'll need to have CLISP
-installed.
+installed, see https://www.gnu.org/software/clisp/
 
 Have fun
 
