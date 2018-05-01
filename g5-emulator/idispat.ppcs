@@ -1,0 +1,363 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: POWERPC-INTERNALS; Base: 10; Lowercase: T -*-
+
+(comment "This file implements the main instruction dispatch loop.")
+
+(include-header "kludges.s")    ;+++ this will be unnecessary at some time 
+
+(define-procedure |DummyDoNothingSubroutine| ()
+    (B continuecurrentinstruction))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Start of protected first page of cache. First class for frequent fliers ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(passthru ".globl NEXTINSTRUCTION")
+(passthru ".globl INTERPRETINSTRUCTION")
+(passthru ".globl ICACHEMISS")
+
+
+;; Common memory subroutines --- here for lack of a better place.  Only
+;; the tails of these routines are used, and pretty rarely
+
+(define-memory-subroutine |MemoryReadData|
+  (arg2 arg5 arg6 PROCESSORSTATE_DATAREAD t5 t6 t7 t8)
+  (t9 t10 t11 t12)
+  (r0))
+
+(define-memory-subroutine |MemoryReadGeneral|
+  (arg2 arg5 arg6 arg3 t5 t6 t7 t8)
+  (t9 t10 t11 t12)
+  (r0))
+
+(define-memory-subroutine |MemoryReadHeader|
+  (arg2 arg5 arg6 PROCESSORSTATE_HEADER t5 t6 t7 t8)
+  (t9 t10 t11 t12)
+  (r0))
+
+(define-memory-subroutine |MemoryReadCdr|
+  (arg2 arg5 arg6 PROCESSORSTATE_CDR t5 t6 t7 t8)
+  (t9 t10 t11 t12)
+  (r0))
+
+(align4k)					;starting at an arbitrary 4k boundary.
+
+;; Nota Bene:  CACHELINE_INSTRUCTION/CACHELINE_OPERAND have a much more
+;; complicated organization than you might think.  For Full-word
+;; instructions, CACHELINE_INSTRUCTION holds the instruction with the
+;; cdr stripped (as a Quadword), for use by push-constant.  For packed
+;; instructions, CACHELINE_INSTRUCTION holds the instruction for
+;; dispatching within instructions on opcode; and CACHELINE_OPERAND
+;; holds the unsigned 10-bit operand in it's low word and a
+;; sign-extended version in its high word.  This whole mish-mash is
+;; loaded into ARG3 by nextInstruction, with appropriate bits loaded out
+;; by the various instruction entries.
+
+;; NB: The PowerPC is big-endian which means that when you do a 32-bit
+;;     operation on CACHELINE_OPERAND, you need to use CACHELINE_OPERAND-4
+;;     as the offset or the processor will overwrite CACHELINE_INSTRUCTION
+;;     instead.  It's not possible to reverse CACHELINE_INSTRUCTION and
+;;     CACHELINE_OPERAND in aistat.sid as that would cause 64-bit
+;;     operations on CACHELINE_INSTRUCTION to be unaligned.  (Sigh)
+
+;; NB: T1 through T9, ARG5, and ARG6 are aliased to other register names
+;; here, so don't use them for anything!
+(define-procedure |DoICacheFill| ()
+    ;; Here from an escape, hence we must recompute iCP according to the
+    ;; real PC.  Also, sometimes cache-miss is because we tried to
+    ;; execute escape, so...
+ #+iCacheMiss-after-iInterpret (label TakeICacheMiss)
+ (label ICacheMiss)
+    (comment "Here when instruction cache miss detected.  Fill the cache from")
+    (comment "PC and then resume interpreter loop")
+    (comment "First round the PC down to an even halfword address")
+    ;; Inlined call to (PC-TO-ICACHEENT epc ecp arg3 arg4) follows...
+    (LD arg2 PROCESSORSTATE_ICACHEBASE (ivory) "get the base of the icache")
+    (clrrdi epc iPC 1                  "the even PC")
+    #-old-cache-hash (srdi ecp epc #.|CacheLineRShift|)
+    (load-constant arg1 #.|CacheLineMask|)
+    #-old-cache-hash (sldi ecp ecp #.|CacheLineLShift|)
+    (srdi instn iPC 1 "instn is instruction address here")
+    #-old-cache-hash (ADD ecp epc ecp)
+    #-old-cache-hash (AND ecp ecp arg1)
+    #+old-cache-hash (AND ecp epc arg1)
+    (sldi arg3 ecp 5 "temp=cpos*32")
+    (sldi ecp ecp 4 "cpos=cpos*16")
+    (ADD arg4 arg2 arg3 "temp2=base+cpos*32")
+    (ADD ecp arg4 ecp "cpos=base+cpos*48")
+    (ORI opc epc 1 "the odd PC")
+    (mov iCP ecp "Assume iPC is the even PC")
+    (XOR arg1 opc iPC "See if iPC is the odd PC arg1=0 if opc==iPC")
+    ;; The odd PC's cache pointer immediately follows
+    (ADDI ocp ecp #.CACHELINESIZE)
+    (CMPI 0 1 arg1 0)
+    (BC 4 2 skip1 "B.NE ie: iPC!=opc")
+    (mov iCP ocp "Stash the odd cache pointer if iPC is the odd PC")
+   (unlikely-label skip1)
+    (LD hwdispatch PROCESSORSTATE_HALFWORDDISPATCH (ivory))
+    (load-constant hwopmask #x3FF "Halfword operand mask")
+    (LD fwdispatch PROCESSORSTATE_FULLWORDDISPATCH (ivory))
+    (load-constant count #.|CacheLineFillAmount|)
+    (VM-Read instn arg4 iword t10 t11 t)
+    (B FillICachePrefetched)
+
+    ;; These come before FillICache to get branch prediction right...
+  (label PCbackOne)
+    (comment "Wire in continuation for even half")
+    (STD epc CACHELINE_NEXTPCDATA (ocp))
+    (ADDI t10 ecp #.(- CACHELINESIZE)      "Backup in cache too")
+    (STD ecp CACHELINE_NEXTCP (ocp))
+    (ADDI arg1 epc -1                 "Backup PC one halfword")
+    (STD t10 CACHELINE_NEXTCP (ecp))
+    (TagType arg4 arg4    "arg4=tag-cdr code")
+    (STD arg1 CACHELINE_NEXTPCDATA (ecp))
+    (comment "Wire in continuation for odd half")
+    (B MaybeUnpack)
+
+  (label PCadvOne)
+    (STD opc CACHELINE_NEXTPCDATA (ecp) "Simple advance of PC one halfword.")
+    (ADDI arg1 opc 1)
+    (STD ocp CACHELINE_NEXTCP (ecp))
+    (ADDI t10 ocp #.cacheline$k-size)
+    (STD arg1 CACHELINE_NEXTPCDATA (ocp))
+    (TagType arg4 arg4    "arg4=tag-cdr code")
+    (STD t10 CACHELINE_NEXTCP (ocp))
+    (B MaybeUnpack)
+
+    (comment "This is the cache fill loop.")
+  (label FillICache)
+    (VM-Read instn arg4 iword t10 t11)
+  (label FillICachePrefetched)
+    (passthru "#ifdef CACHEMETERING")
+    (comment "Increment the fill count for both cache entries")
+    (LWA t10 CACHELINE_ANNOTATION+4 (ecp)) ;+++ use lwz and save rldicl below
+    (LWA t11 CACHELINE_ANNOTATION+4 (ocp)) ;+++ use lwz and save rldicl below
+    (clrldi t10 t10 32)
+    (clrldi t11 t11 32)
+    (ADDI t10 t10 1)
+    (STW t10 CACHELINE_ANNOTATION+4 (ecp))
+    (ADDI t11 t11 1)
+    (STW t11 CACHELINE_ANNOTATION+4 (ocp))
+    (passthru "#endif")
+    (STD epc CACHELINE_PCDATA (ecp)   "Set address of even cache posn.")
+    (ANDI-DOT arg1 arg4 #xC0               "CDR code << 6")
+    (TagType arg4 arg4		      "Strip cdr")
+    (STD opc CACHELINE_PCDATA (ocp)   "Set address of odd cache posn.")
+    (clrldi iword iword 32          "Strip nasty bits out.")
+    (force-alignment)
+    (sldi arg2 arg4 32             "ready to remerge")
+    (branch-if-zero arg1 PCadvOne                "Zerotag means advance one HW")
+    (ADDI arg1 arg1 #.(- #x80)             "2<<6")
+    (branch-if-zero arg1 PCbackOne               "Tag=2 means backup one HW")
+    (branch-if-less-than-zero arg1 PCendCF                 "Tag=1 means end of compiled function")
+
+  (label PCadvTwo)
+    (comment "Tag=3 means advance over one full word")
+    (Comment "Wire in continuation for even half")
+    (ADDI arg1 epc 2                 "Next word")
+    (NOP)
+    (ADDI t10 ecp #.(* 2 cacheline$k-size)   "corresponding CP entry")
+    (STD arg1 CACHELINE_NEXTPCDATA (ecp)  "Next PC even of next word")
+    (ADDI arg1 epc 4                 "Skip one fullword")
+    (STD t10 CACHELINE_NEXTCP (ecp)  "Next CP")
+    (comment "Wire in continuation for odd half")
+    (ADDI t10 ecp #.(* 4 cacheline$k-size)  "corresponding CP entry")
+    (STD arg1 CACHELINE_NEXTPCDATA (ocp))
+    (TagType arg4 arg4    "arg4=tag-cdr code")
+    (STD t10 CACHELINE_NEXTCP (ocp))
+    (B MaybeUnpack)
+	
+    ;; The feature FILL-PAST-CALL controls whether icache filling keeps
+    ;; going when it sees a FINISH-CALL instruction.
+  (label DecodePackedWord)
+    (comment "Here to decode a packed word")
+    (passthru "#ifdef CACHEMETERING")
+    (maybe-meter-miss t10 arg4 t12 t11 arg2 arg1) ; count the odd instruction.
+    (passthru "#endif")
+    (srdi arg4 iword 18              "arg4 contains the odd packedword")
+    (srdi t10 iword 8                "even opcode+2bits")
+    (STD arg4 CACHELINE_INSTRUCTION (ocp) "Save the odd instruction")
+    (sldi t11 iword #.(- 64 10)  "First phase of even operand sign extension.")
+    (AND t12 iword hwopmask         "even operand+2bits")
+    ;; Cache metering steals ANNOTATION from us
+    (passthru "#ifndef CACHEMETERING")
+    ;; Clear the annotation field (used for branch-taken cache)
+    (stzd CACHELINE_ANNOTATION (ocp))
+    (passthru "#endif")
+    (AND t10 t10 hwopmask           "even opcode")
+    (SRADI t11 t11 #.(- 64 10 16)     "Second phase of even operand sign extension.")
+    #-fill-past-call (ADDI arg2 t10 #.(- I-LISP-COMPILER:*FINISH-CALL-N-OPCODE*))
+    (sldi t10 t10 3)
+    (ADD t10 hwdispatch t10)
+    (OR t12 t11 t12                "Merge signed/unsigned even operand")
+    #-fill-past-call (clrrdi arg2 arg2 2)
+    (STW t12 CACHELINE_OPERAND-4 (ecp))
+    #-fill-past-call (CMPI 0 1 arg2 0)
+    #-fill-past-call (BC 4 2 skip2 "B.NE")
+    #-fill-past-call (mov count arg2 "clear count if finish-call seen")
+    #-fill-past-call (unlikely-label skip2)
+    (srdi arg2 arg4 8                "odd opcode+2bits")
+    (sldi t11 arg4 #.(- 64 10)   "First phase of odd operand sign extension.")
+    (AND arg1 arg4 hwopmask         "odd operand+2bits")
+    (LD t10 0 (t10))
+    (AND arg2 arg2 hwopmask          "odd opcode")
+    (SRADI t11 t11 #.(- 64 10 16)      "Second phase of odd operand sign extension.")
+    (STD t10 CACHELINE_CODE (ecp))
+    #-fill-past-call (ADDI t12 arg2 #.(- I-LISP-COMPILER:*FINISH-CALL-N-OPCODE*))
+    (sldi arg2 arg2 3)
+    (ADD arg2 hwdispatch arg2)
+    (OR arg1 t11 arg1               "Merge signed/unsigned odd operand")
+    (STW arg1 CACHELINE_OPERAND-4 (ocp))
+    #-fill-past-call (clrrdi t12 t12 2)
+    (LD arg2 0 (arg2))
+    #-fill-past-call (CMPI 0 1 t12 0)
+    #-fill-past-call (BC 4 2 skip3 "B.NE")
+    #-fill-past-call (mov count t12 "clear count if finish-call seen")
+    #-fill-past-call (unlikely-label skip3)
+    (STD arg2 CACHELINE_CODE (ocp))
+    (B EndDecode)
+
+  (label MaybeUnpack)
+    ;; C.f., aistat.sid.  We store the instruction as a Q, clobbering
+    ;; the overlapping operand field for full-word instructions.  If
+    ;; this turns out to be packed instead, the operand field will get
+    ;; updated appropriately when we decode
+    (OR iword arg2 iword             "reassemble tag and word.")
+    (STD iword CACHELINE_INSTRUCTION (ecp) "save the even instruction")
+    (ADDI t10 arg4 #.(- #o60)               "t10>=0 if packed")
+    ;; Cache metering steals ANNOTATION from us
+    (passthru "#ifndef CACHEMETERING")
+    ;; Clear the annotation field (used for branch-taken cache)
+    (stzd CACHELINE_ANNOTATION (ecp))
+    (passthru "#endif")
+    (passthru "#ifdef CACHEMETERING")
+    (maybe-meter-miss t11 t12 t10 arg1 arg2 epc) ; count the even instruction.
+    (passthru "#endif")
+    (branch-if-greater-than-or-equal-to-zero t10 DecodePackedWord         "B. if a packed instruction")
+    (sldi t11 arg4 3)
+    (ADD t11 fwdispatch t11       "t11 is the fwdispatch index")
+    (LD t12 PROCESSORSTATE_I_STAGE_ERROR_HOOK (ivory))
+    #-fill-past-native (ADDI arg1 arg4 #.(- |type$K-nativeinstruction|))
+    (LD t11 0 (t11)                  "Extract the opcode handler") 
+    (STD t12 CACHELINE_CODE (ocp)     "Store I-STATE-ERROR at odd pc")
+    #-fill-past-call (CMPI 0 1 arg1 0)
+    #-fill-past-call (BC 4 2 skip4 "B.NE")
+    #-fill-past-call (mov count arg1 "clear count if native instn seen")
+    #-fill-past-call (unlikely-label skip4)
+    (STD t11 CACHELINE_CODE (ecp))
+    ;(B EndDecode)
+	
+  (label EndDecode)
+    (comment "Here we decide if to stop filling the cache and return to the")
+    (comment "instruction interpretation stream, or whether to fill further")
+    (ADDI instn instn 1)
+    (branch-if-less-than-or-equal-to-zero count cacheValid "If count is zero, resume")
+    (sldi epc instn 1)
+    (ADDI count count -1            "decrement count")
+    (ORI opc epc 1)
+    (LD t10 PROCESSORSTATE_ENDICACHE (ivory) "pointer to the end of icache")
+    (ADDI ocp ocp #.(* 2 cacheline$k-size))
+    (ADDI ecp ecp #.(* 2 cacheline$k-size))
+    (SUBF t10 t10 ocp)
+    (branch-if-less-than-or-equal-to-zero t10 FillICache            "Still room for more")
+    (B cacheValid)
+
+  (label PCendCF)
+    (LD t11 PROCESSORSTATE_I_STAGE_ERROR_HOOK (ivory)) 
+    (clr count                      "We reached the end of the fcn.")
+    (STD t11 CACHELINE_CODE (ecp)   "Store I-STATE-ERROR dispatch at even and odd pc")
+    (STD t11 CACHELINE_CODE (ocp))
+    (B EndDecode)
+)
+
+
+(comment "These are the instruction reentry points.  Instructions end by returning")
+(comment "control to one of these tags.  Most normal instructions reenter by jumping")
+(comment "to NEXTINSTRUCTION, which advances the PC and continues normally.  ")
+(comment "Instructions that change the PC usually go directly to INTERPRETINSTRUCTION.")
+(comment "Instructions that fail/trap/exception etc, go to one of the other places.")
+
+(define-external-procedure |iInterpret| (arg1)
+    (STD SP PROCESSORSTATE_IINTERPRET_SP (arg1) "Save stack frame for iOutOfLine")
+    (mov ivory arg1 "Setup our processor object handle")
+    (comment "Upon entry, load cached state.")
+    (cache-ivory-state)
+	
+    (branch-if-nonzero iCP interpretinstruction "First time in iCP will be zero.")
+
+    (B ICacheMiss "If this is the first time in cache is empty!")
+
+  #+jump-prediction (label interpretInstructionForJump)
+    #+jump-prediction (LD arg2 CACHELINE_ANNOTATION (iCP))
+    #+jump-prediction (branch-if-zero arg2 interpretInstructionForBranch)
+    ;; Fall through to interpretInstructionPredicted...
+    
+    ;; This duplicates most of interpretInstruction, because it needs to
+    ;; verify the prediction and do things the hard way if the prediction
+    ;; is wrong, before smashing iCP (so the prediction can be fixed up)
+  (label interpretInstructionPredicted)
+    (LD t2 CACHELINE_PCDATA (arg2) "Get the PC to check cache hit.")
+
+    ;; Don't bother resetting r30, we can't get here from a restart
+    (mov arg1 iFP               "Assume FP mode")
+    (LD R0 PROCESSORSTATE_STOP_INTERPRETER (ivory) "Have we been asked to stop?")
+    (ADDI arg4 iSP -8              "SP-pop mode constant")
+    (LD arg3 CACHELINE_INSTRUCTION (arg2) "Grab the instruction/operand while stalled")
+    (SUBF t1 t2 iPC)
+    ;; On no match, recompute iCP before resorting to refilling cache
+    ;; (the assumption is that you have a mis-prediction in this case
+    (branch-if-nonzero t1 interpretInstructionForBranch) 
+    (mov iCP arg2)
+    ;; Nota Bene: traporsuspendmachine must not smash any of the
+    ;; registers set up above: arg1, arg3, arg4, or t2, if it comes back
+    ;; to continuecurrentinstruction
+    (long-branch-if-nonzero R0 traporsuspendmachine "Stop the world! someone wants out.")
+    (B continuecurrentinstruction)
+
+  #-jump-prediction (label interpretInstructionForJump)
+
+  (label interpretInstructionForBranch)
+    ;; In effect, an inlined call to (PC-TO-iCACHEENT iPC iCP t4 t5)
+    (LD t5 PROCESSORSTATE_ICACHEBASE (ivory) "get the base of the icache")
+    (load-constant t4 #.|CacheLineMask|)
+    #-old-cache-hash (srdi arg2 iPC #.|CacheLineRShift|)
+    #-old-cache-hash (sldi arg2 arg2 #.|CacheLineLShift|)
+    #-old-cache-hash (ADD arg2 iPC arg2)
+    #-old-cache-hash (AND arg2 arg2 t4)
+    #+old-cache-hash (AND arg2 iPC t4)
+    (sldi t4 arg2 5 "temp=cpos*32")
+    (sldi arg2 arg2 4 "cpos=cpos*16")
+    (ADD t5 t5 t4 "temp2=base+cpos*32")
+    (force-alignment)
+    (ADD arg2 t5 arg2 "cpos=base+cpos*48")
+    ;; We come here if the branch has previously cached the hash, with
+    ;; the arg2 in arg2
+    ;; Cache metering steals ANNOTATION from us
+    (passthru "#ifndef CACHEMETERING")
+    ;; Save the computed branch-taken CP in ANNOTATION
+    (STD arg2 CACHELINE_ANNOTATION (iCP))
+    (passthru "#endif")
+    ;; See above (label interpretInstructionPredicted)
+    (mov iCP arg2)
+  
+  (label interpretInstruction)
+    ;; If we come here from a restart, we flush any in-progress
+    ;; subroutine calls (pop the stack back)
+    ;(LD r30 PROCESSORSTATE_ASRR30 (ivory))
+    (LD R0 PROCESSORSTATE_STOP_INTERPRETER (ivory) "Have we been asked to stop?")
+    (mov arg1 iFP               "Assume FP mode")
+    (LD arg3 CACHELINE_INSTRUCTION (iCP) "Grab the instruction/operand while stalled")
+    (ADDI arg4 iSP -8              "SP-pop mode constant")
+    (LD t2 CACHELINE_PCDATA (iCP)  "Get the PC to check cache hit.")
+    ;; Nota Bene: traporsuspendmachine must not smash any of the
+    ;; registers set up above: arg1, arg3, arg4, or t2, if it comes back
+    ;; to continuecurrentinstruction
+    (long-branch-if-nonzero R0 traporsuspendmachine "Stop the world! someone wants out.")
+    (B continuecurrentinstruction)
+
+   )
+
+;;; nextInstruction moved to ifuncom1 to concatenate with DoPush, the
+;;; most popular instruction
+
+;;; End of idispat
+ 

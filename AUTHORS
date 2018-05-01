@@ -1,0 +1,8 @@
+authors: 
+vlm on alpha:P.T.Withington, Scott McKay, and Gary Palter at Symbolics Inc.
+       Paul Robertson at Dynamic Object Language Group 
+see: http://pt.withy.org/publications/VLM.html
+
+x86_64 port: by bard parker (brad@unlambda.com)
+
+last modified: Joachim Jachemich (joachim@jachemich.de)

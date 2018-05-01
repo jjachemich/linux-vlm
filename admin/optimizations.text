@@ -1,0 +1,79 @@
+-*- Mode: Text -*-
+
+Microcode optimizations that can be made:
+
+  Single-floats.  Double-floats if we know where to cons them.
+
+  Various interpreter escapes that we now "know": e.g., SYMBOL,
+  GENERIC-FUNCTION, INSTANCE-- these currently trampoline through
+  interpreter escape table, but could be done in ucode.
+
+Alpha optimizations:
+
+  I think this is a better LDB (5 instructions vs. 7) if the shift
+  instructions only look at the low 5 bits of shift.
+  
+    (type-dispatch arg3 t5 t6
+      (|TypeFixnum|
+	(BIS zero 64 t3)
+	(SUBQ t3 arg1 arg1 "Size (un-) shift")
+	(SUBQ arg1 arg2 t3 "Add position (un-) shift")
+	(SLL arg4 t3 t4 "Shove undesired bits out top")
+	(SRL t4 arg1 t4 "Bring desired bits to bottom")
+	(stack-write-ir |TypeFixnum| t4 t3)
+	(ContinueToNextInstruction))
+      (:else 
+	(NumericTypeException arg3 ldb)))
+  
+  I suspect this could be adapted to the array-ldb code too.  (Unless my
+  brain has exploded from thinking at too low a level!)
+  
+---
+
+  I believe array-bounds checking can be done in one less instruction (as
+  in VMAinStackCache):
+
+    (defmacro check-array-bounds (data bound ioplab temp)
+      `((BLT ,data ,ioplab)
+	(SUBQ ,data ,bound ,temp)
+	(BGE ,temp ,ioplab)))
+
+  can be:
+
+    (defmacro check-array-bounds (data bound ioplab temp)
+      `((CMPULT ,data ,bound ,temp)
+	(BEQ ,temp ,ioplab)))
+
+  I'll put this in, if you all believe it.
+
+Microcode optimizations:
+
+Setting BAR's could do access checks for page and flag so read/write to
+BAR within page is faster.  (Perhaps irrelevant if we get mprotect
+working).
+
+---
+
+Interpreter escapes for symbol, instance, etc.  Perhaps invent a
+"standalone" cache-line you can point at that contains the canned
+%message-dispatch instruction, so you don't have to actually fetch it.
+
+Hidden array-register:  cache the last array to aref/set/loc.  Perhaps
+cache the appropriate unpacking code fragment (subroutine) too.
+
+Recode VMScan, VMPHTScan in assembler.  Look at PHT entries and tag
+entries 8 at a time.
+
+Reinvent "AMem":  since we can see all of VM, have a register that
+points at sys:inhibit-scheduling-flag so we know when to not bother with
+preempting in unbind.
+
+Let the microcode cons 2-word bignums, double-floats.  Have a new
+machine register that is the address of *default-cons-area*.  If the
+appropriate allocate cache is the same as this register, the microcode
+can cons, otherwise trap.
+
+Let the microcode handle all mixed math for fix/float and 2-word (i.e.,
+64-bit) bignums.  Perhaps loading doubles and bignums can be a
+subroutine, shared by all math.
+

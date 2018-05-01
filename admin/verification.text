@@ -1,0 +1,49 @@
+-*- Mode: Text -*-
+
+How to run the verification suite:
+
+:Load File SYS:SITE;IMACH.TRANSLATIONS
+
+:Load System I-Verify :Version Newest
+
+  (sysdcl in IMACH:I-VERIFY;I-VERIFY.LISP)
+
+:Load File IMACH:I-VERIFY;VLM-INTERFACE
+
+  (which defines the verificationvlm interface)
+
+:Load File R:>ptw>work>emulator>minimaccess-changes
+
+  (which extends the Minima Access protocols to accomodate the above,
+  primarily creating a write-buffer.)
+
+To run the tests:
+
+Select the emulator access path in the Minima Debugger
+
+(IV:INITIALIZE-VIRTUAL-LISP-MACHINE 4)
+
+  [Stupidly, this assumes the current Minima Debugger access path to be
+  the emulator.  We can fix this by making a Debugger command to do
+  this.]
+
+(IV:LOAD-WORLD-HACK :IMPLEMENTATION 4 :PATHNAMES ...)
+
+  Pathnames should include at least MACROS and TRAPS, then whatever
+  tests you want to run.  Some of the files depend on earlier files
+  (unfortunately you can only discover this by tiral and error).  It
+  compiles the files afresh each time you load, so is fairly slow.  We
+  could probably work out a way to save an image to load, I have not
+  investigated doing that.  This should probably be part of the same
+  Debugger command, although I think you can load more files if you
+  don't initialize.
+
+:Run Tests <pattern> :Disable Stack Cache Emptying Yes
+
+<pattern> is some complex KHS-ism.  A null pattern runs all the loaded
+tests.  You can run a particular test by using it's exact name (as
+echoed when it is run).  You can usually run the tests in a file by
+using the file's name, e.g., the tests in LISTS can be run by "Run Tests
+lists"; finally, you can select sets of tests, with boolean expressions
+such as "Run Tests (and call (not flavors))".
+

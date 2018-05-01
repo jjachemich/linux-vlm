@@ -1,0 +1,66 @@
+		Status of Ivory-Alpha Opcode translation
+
+Instructions implemented:
+
+SetSpToAddressHW
+SetSpToAddressSaveTosHW
+PushHW
+PopHW
+MovemHW
+PushAddressHW
+pushconstantvalue
+TypeMemberHW
+PointerPlusHW
+PointerDifferenceHW
+ZeropHW
+AddHW
+LoopDecrementTosHW
+32BitPLUSHW
+32BitDifferenceHW
+PushNNilsHW
+BranchHW +++ debug
+
+These instructions SHOULD be added.
+
+CARHW						;done
+CDRHW						;done
+SetToCarHW					;done
+SetToCdrHW					;done
+SetToCdrPushCarHW				;done
+ENDPHW						;done
+TAGHW						;done
+MINUSPHW					;done
+PLUSPHW						;done
+
+PushAddressSpRelativeHW
+UnaryMinusHW
+IncrementHW
+DecrementHW
+PointerIncrementHW
+SetCdrCode1HW
+SetCdrCode2HW
+LdbHW
+CharLdbHW
+PLdbHW
+PTagLdbHW
+EqlHW						;done
+EqHW						;done
+valuecell
+
+These instructions may be worth adding.
+
+TakeValuesHW
+PushAddressInstanceVariableHW
+MemoryReadHW
+Block0ReadHW
+Block1ReadHW
+Block2ReadHW
+Block3ReadHW
+RplacaHW
+RplacdHW
+AshHW
+MemoryWriteHW
+
+
+
+

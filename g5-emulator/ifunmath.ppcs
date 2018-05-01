@@ -1,0 +1,130 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+;(include-header "ifunhead.s")
+
+(comment "Arithmetic.")
+
+
+;; |DoAdd| and |DoSub| is in IFUNCOM2.PPCS
+
+
+;; Same deal as |DoAdd| and |DoSub|...
+(define-instruction |DoUnaryMinus| :operand-from-stack (:own-immediate t)
+    (PrefetchNextPC t6)
+    (PrefetchNextCP t7)
+    (stack-read-tag arg1 arg5 "tag of ARG2")
+    (stack-read-data arg1 arg6 :signed t)
+    (LD t2 PROCESSORSTATE_MOSTNEGATIVEFIXNUM (ivory))
+    (stack-read-data arg1 f1 :floating t)
+    (type-dispatch arg5 t5 t4
+      (|TypeFixnum|
+	(CMPL 0 0 arg6 t2 "32-bit compare (signed/unsigned irrelevant)")
+	(NEG arg2 arg6)
+	(BC 12 2 unaryminusexc "Overflow if most-negative-fixnum")
+	(SetNextPC t6)
+	(stack-write-tag-disp iSP 8 t5 "Semi-cheat, we know t5 has CDRNext/TypeFixnum")
+	(SetNextCP t7)
+	(stack-push-data arg2 "Push the data")
+	(ContinueToNextInstruction-NoStall))
+      (|TypeSingleFloat|
+	(with-floating-exception-checking (unaryminusexc t2)
+	  ;(CheckFloatingOverflow arg6 unaryminusexc t2)
+	  (FNEG f0 f1))
+	;; (fp-stack-push-ir |TypeSingleFloat| f0 t7)
+	(SetNextPC t6)
+	(stack-write-tag-disp iSP 8 t5 "Semi-cheat, we know t5 has CDRNext/TypeSingleFloat")
+	(SetNextCP t7)
+	(stack-push-data f0 "Push the data" :floating t)
+	(ContinueToNextInstruction-NoStall))
+      (:else 
+	(label unaryminusexc)
+	(UnaryNumericTypeException arg5 unary-minus)))
+  (immediate-handler |DoUnaryMinus|)
+    (NEG arg2 arg2 "Negate the 8 bit immediate operand")
+    (GetNextPCandCP)
+    (stack-push-ir |TypeFixnum| arg2 t7)
+    (ContinueToNextInstruction-NoStall))
+
+;; Same deal |DoAdd| and |DoSub|...
+(define-instruction |DoMultiply| :operand-from-stack (:own-immediate t :needs-tos t)
+    (simple-binary-arithmetic-operation multiply MULLW FMULS DoMulOvfl)
+  (immediate-handler |DoMultiply|)
+    (simple-binary-immediate-arithmetic-operation |DoMultiply| MULLW t DoMulOvfl))
+
+
+;; |DoIncrement| and |DoDecrement| are in IFUNCOM2.PPCS
+
+
+(align4kskip4k)
+
+(define-subroutine |BinaryArithmeticDivisionPrelude|
+		   ;; --- Arguments need to be regularized 
+		   ()
+		   (r0)
+  ;; --- Instruction is irrelevant
+  (binary-arithmetic-division-prelude quotient))
+
+(define-instruction |DoQuotient| :operand-from-stack (:needs-tos t :provide-immediate t :signed-immediate t)
+    (call-subroutine |BinaryArithmeticDivisionPrelude|)
+    (binary-arithmetic-one-value-division-operation :truncate))
+
+;; Same thing, but inexact fixnum results trap out to become ratios.
+;; Maybe cons them here some day?
+(define-instruction |DoRationalQuotient| :operand-from-stack (:needs-tos t :provide-immediate t :signed-immediate t)
+    (call-subroutine |BinaryArithmeticDivisionPrelude|)
+    (binary-arithmetic-one-value-division-operation :rational))
+
+(define-instruction |DoFloor| :operand-from-stack (:needs-tos t :provide-immediate t :signed-immediate t)
+    (call-subroutine |BinaryArithmeticDivisionPrelude|)
+    (binary-arithmetic-two-value-division-operation :down))
+
+(define-instruction |DoCeiling| :operand-from-stack (:needs-tos t :provide-immediate t :signed-immediate t)
+    (call-subroutine |BinaryArithmeticDivisionPrelude|)
+    (binary-arithmetic-two-value-division-operation :up))
+
+(define-instruction |DoTruncate| :operand-from-stack (:needs-tos t :provide-immediate t :signed-immediate t)
+    (call-subroutine |BinaryArithmeticDivisionPrelude|)
+    (binary-arithmetic-two-value-division-operation :truncate))
+ 
+(define-instruction |DoRound| :operand-from-stack (:needs-tos t :provide-immediate t :signed-immediate t)
+    (call-subroutine |BinaryArithmeticDivisionPrelude|)
+    (binary-arithmetic-two-value-division-operation :round))
+
+(comment "Other arithmetic.")
+
+;; Really this is :operand-from-stack-immediate, but we can save some
+;; crucial cycles by doing the loads here inline
+(define-instruction |DoMax| :operand-from-stack
+    (:provide-immediate t :signed-immediate t :needs-tos t)
+    (simple-binary-minmax max))
+
+;; Same deal as |DoMax|...
+(define-instruction |DoMin| :operand-from-stack
+    (:provide-immediate t :signed-immediate t :needs-tos t)
+    (simple-binary-minmax min))
+
+
+(define-instruction |DoMultiplyDouble| :operand-from-stack-signed-immediate ()
+    (srdi t2 arg1 32 "ARG2 tag")
+    ;; We don't use STACK-READ2, because it clears the sign extension
+    (LWA t3 4 (iSP) "ARG1 data, sign extended")
+    (exts t4 arg1 32 "t4=signextend(arg1)")
+    (LWA t1 0 (iSP) "ARG1 tag")
+    (TagType t1 t1 "Strip CDR code if any.")
+    (ADDI t1 t1 #.(- |type$K-fixnum|))
+    (TagType t2 t2 "Strip CDR code if any.")
+    (MULLD t5 t3 t4   "Perform the 64-bit multiply.")
+    (ADDI t2 t2 #.(- |type$K-fixnum|))
+    (branch-if-nonzero t1 muldexc)
+    (branch-if-nonzero t2 muldexc)
+    (clrldi t6 t5 32 "Get the low 32 bit half.")
+    (srdi t5 t5 32 "Get the high 32 bit half.") ; +++
+    (STW t6 4 (iSP) "Put the result back on the stack")
+    (stack-push-ir |TypeFixnum| t5 t1 "Push high order half")
+    (ContinueToNextInstruction)
+  (label muldexc)
+    (illegal-operand two-operand-fixnum-type-error))
+
+(comment "Fin.")

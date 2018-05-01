@@ -1,0 +1,160 @@
+-*- Mode: Text -*-
+
+[Started by ptw 2 Oct 92]
+
+D,#TD1PsT[Begin using 006 escapes](1 0 (NIL 0) (NIL :ITALIC NIL) "CPTFONTI")Signed comments in italics please.
+
+0I've been giving some thought as to how to eliminate the need to
+faithfully emulate Ivory memory hardware in VLIM but still retain the
+benefits (primarily the support for ephemeral garbage collection).
+Comment and discussion solicited.
+
+My basic idea is to have VLIM be "Ivory Rev. 5".  To add some
+instructions that replace macro functions in the garbage collector that
+glean information from the memory hardware and to modify Genera to use
+those instructions when running on rev. 5.  Essentially, we'd just be
+moving back more to the 36xx era when the microcode was programmable and
+much more sophisticated.  
+
+Since the information the memory hardware gives to Genera to support
+garbage collection is mostly in the form of "hints", we can start with
+very simple (conservative) microcode and supporting structures and
+enhance them as necessary.  We should be able to remodularize and debug
+Genera without the microcode being finished; we can even prototype
+performance impact somewhat by implementing "emulations" of the new
+microcode in Lisp.
+
+One other idea I have for eliminating macrocode and overhead is that
+Ivory rev. 5 be a virtual address only implementation.  That is, Genera
+will get completely out of the memory management business as far as
+physical memory is concerned.  At boot time, the mapping of virtual
+addresses to world-load pages will be set up in the chip and the
+microcode will handle all disk I/O for paging.  We may still want to
+support macro-code intercept of faults, since the IDS mechanism depends
+on write faults and to sanity check that missing faults are for valid
+addresses.  If so, there will need to be instructions to set protection
+on virtual addresses.  I think it will be sufficient to have uncreated
+pages fault and have the fault handler simply turn off the fault (with
+the implication that if you touch an uncreated page that is not marked
+to fault, the microcode simply creates it) and possibly initialize the
+page.  It will be completely up to the microcode to manage the working
+set and keep the most-used virtual pages addressible.
+
+The types of instructions I'm thinking of (these are very high-level and
+don't necessarily correspond to current Genera GC in any but an abstract
+way) are things like:
+
+  allocate-ephemeral-level
+
+    Returns a base (virtual) address and extent, the (demi-)level-number
+    is encoded in the virtual address as in the current architecture.
+    The GC uses this instruction to get an address range to create
+    ephemeral regions in.  The microcode keeps a correspondence of
+    level-number to address range to support ephemeral hints.  
+
+1ptw:  This assumes the micro-machine can efficiently map from
+(potentially sparse) level addresses to its implementation memory.  If
+the implementation memory supports sparse addressing, perhaps the
+mapping could be direct.  Perhaps the micro-machine memory has two
+regions (defined by hidden high bits) one mapping to the 32-bit pointer
+words and the other to the 8-bit tag bytes.  For the purposes of GC, you
+only have to "hook" the vm activity of one of those regions.
+
+0  free-ephemeral-level
+
+    Takes a level number (or perhaps the base address and extent for
+    sanity checking?).  The GC uses this instruction to return a virtual
+    address range when it has reclaimed all the regions in it.
+
+1ptw: Is this sufficient granularity?  Perhaps for ephemeral, where you
+can't (?) have false oldspace, but is there an issue for dynamic?  Do we
+even really have to free levels? or is it sufficient for the GC to set
+"missing-fault" on reclaimed regions?
+
+0  Similar instructions for dynamic zones.  (Depending on how fancy we
+  want the microcode to get, these level/zone instructions might take a
+  desired size and we might allow a semi-inifinite number of them,
+  returning the associated level/zone number as a third result rather
+  than having them be directly computable from the address.  If so, we
+  would need two more instructions ephemeral-level and dynamic-zone that
+  returned the corresponding number given a random address.  Initially I
+  lean toward just using the current Ivory scheme of 32/31 to keep the
+  microcode's job and the changes to Genera managable.)
+
+  set-oldspace-registers 1ephemeral zone
+  
+0    Setting oldspace registers 1could 0work as normal, but I think having
+    an instruction is more perspicuous and I expect in rev. 5 the
+    instruction will also automatically enable transport faults on all
+    non-oldspace, non-disabled addresses.
+  
+    The microcode will still have to be responsible for recognizing
+    fetches of oldspace pointers and generating transport traps.  If
+    this is too burdensome to do on every read cycle, we might want to
+    consider extending the execute mechanism to data too:  fault on a
+    "page" basis and require clearing all references on the page before
+    proceeding.  This leads to some inefficiency in collection, but the
+    microcode then need only implement it's oldspace check on a page
+    basis and can (in an initial implementation) just always trap.
+
+  scan-for-oldspace1 address extent  address or NIL
+
+0    takes an address and extent, returns the next address in that range
+    that has an oldspace pointer in it, or NIL if none.  Clears
+    transport fault for the "pages" in range when it returns NIL (the
+    macrocode is responsible for re-enabling the fault if it adds
+    oldspace references to the range, e.g., when appending to
+    copyspace). The microcode is free to use whatever techniques
+    available to optimize this scan.  A simple one that occurs to me is
+    to scan the tags page first for pointer objects and only look at the
+    corresponding data entry when necessary.  Clearly the microcode can
+    use its virtual memory implementation hardware to enhance this scan
+    in various ways similar to the way the current macrocode does.
+
+    There may want to be a variant on this instruction,
+    scan-for-resident-oldspace, that only looks at currently paged in
+    pages, but this is not clear.  In Genera resident and non-resident
+    are done in separate passes because the macrocode mechanism is so
+    different for the two cases.  Where the mechanism will be completely
+    hidden in the microcode, the only reason for maintaining the two
+    passes is to not page out a page that needs scanning simply because
+    you asked for it in the wrong order.  It's not clear this is needed
+    in the first implementation.
+
+1ptw: another thought is that the instruction might want to be
+"block-transport" and it traps to "transport-trap" repeatedly?  That
+won't fly in Minima so well.  The micro-machine has to know about
+skipping missing pages for sparse objects.
+
+0  set-attributes1 type address extent
+0  clear-attributes 1type0 1address0 1extent
+
+0    Type is a subset of {missing-fault, access-fault, write-fault,
+    transport-fault, transport-disable, wired}.  By default,
+    missing-fault is automatically set for "new" addresses (addresses in
+    a just allocated level or zone) and transport-fault is re-set for
+    all non-oldspace, non-disabled pages by the set-oldspace-registers
+    instruction.  Transport-disable tells the microcode 1not0 to
+    automatically enable transport faults on those addresses (in support
+    of safeguarded and weakspace).  The microcode can validly optimize
+    out setting of other transport faults when it "knows" there are no
+    oldspace references in the page.  Wired is 1advice0 to the microcode
+    that the range is likely to be frequently accessed.
+
+1ptw:  Does setting missing-fault allow the micro-machine to reclaim the
+page?  Or do we need another more explicit mechanism.  I don't think so,
+since I can think of no other use for setting it.
+
+0  page-size
+
+    not an instruction, but a new register.  If rev. 5 changes the page
+    size, even though it is a virtual address machine, the GC will
+    probably interact best with the microcode when it knows the
+    underlying page size (in particular, it will need to know it if
+    page-based transport faults are implemented).
+
+  miscellaneous
+
+    I don't know off the top of my head how many "free" instructions are
+    available, but we will probably find it quite useful to re-microcode
+    some operations such as block-gc-copy-and-forward.

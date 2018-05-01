@@ -1,0 +1,25 @@
+plans for further development:
+
+- reconsider using the tap interface using a different method to pick up /
+  inject eth frames. A pf interface (BSD-like) isn't available for LINUX
+  in a usable fashion like on the alpha ?? maybe try and use libpcap
+
+- clean up the life-support routines (partly done)
+
+- move everything into an autoconf/automake project (partly done,
+  working at least)
+
+- instead of generating c-code maybe generate x64 assembly code directly -
+  not much performance gain to be expected and lots of tedious work.
+  with gcc, c-code is performant anyway...
+
+- build a time routine to be used instead of querying the network for
+  universal time at startup. At least with ip this is still taking ages at
+  startup, using chaosnet is faster, using a builtin routine would even be
+  faster than that. Also find a way to get the DST from the embedding system
+  because the LISP code used to dtermine DST is outdated and anyway only
+  working for US DST definitions.
+
+- add an option for setting the guest MAC address like
+  "tap0:MAC|01:02:03:04:05:06" to utilities.c and life-support/network-tap...
+  probably needed to set a MAC address for MACSYMA key generation

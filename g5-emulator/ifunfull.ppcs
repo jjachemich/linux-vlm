@@ -1,0 +1,95 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+;(include-header "ifunhead.s")
+
+(comment "The full word instructions")
+
+(define-instruction |DoIStageError| :full-word-instruction ()
+    (illegal-operand i-stage-error))
+
+(define-instruction |nullfw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-null)))
+
+(define-instruction |monitorforwardfw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-monitor-forward)))
+
+(define-instruction |headerpfw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-header-p)))
+
+(define-instruction |headerifw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-header-i)))
+
+(define-instruction |oneqforwardfw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-one-q-forward)))
+
+(define-instruction |headerforwardfw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-header-forward)))
+
+(define-instruction |elementforwardfw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-element-forward)))
+
+(define-instruction |gcforwardfw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-gc-forward)))
+
+(define-instruction |boundlocationfw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-bound-location)))
+
+(define-instruction |logicvariablefw| :full-word-instruction () 
+    (illegal-operand (illegal-full-word-instruction dtp-logic-variable)))
+
+;; |valuecell| is in IFUNCOM1.PPCS
+
+;; |pushconstantvalue| is in IFUNCOM1.PPCS
+
+(define-instruction |pushsparepointer3| :full-word-instruction () 
+    (LD arg1 CACHELINE_INSTRUCTION (iCP) "Get operand")
+    (UnimplementedInstruction))
+
+(define-instruction |pushsparepointer4| :full-word-instruction () 
+    (LD arg1 CACHELINE_INSTRUCTION (iCP) "Get operand")
+    (UnimplementedInstruction))
+
+(passthru ".globl callcompiledoddprefetch")
+(define-instruction |callcompiledodd| :full-word-instruction () 
+  (label |callcompiledoddprefetch|)		;the same as |callcompiledodd|
+    (mov arg6 arg3 "Get operand")
+    (li arg5 |TypeOddPC|)
+    (clr arg3 "No extra arg")
+    (B startcallcompiledmerge))		;push new frame and exit
+
+;; |callindirect|, |callindirectprefetch|, |callcompiledeven|, and
+;; |callgeneric| are in IFUNCOM1.PPCS
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;		       Native Instruction Support		     ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-instruction |nativeinstruction| :full-word-instruction () 
+  ;; RESTARTSP already set when we get here
+  (clrrdi arg1 iPC 1 "arg1 is instruction address*2 here")
+  (ADD arg1 arg1 arg1 "Select the DATA address")
+  (sldi arg2 Ivory 2 "arg2:=Ivory*4")
+  (ADD arg1 arg1 arg2 "Add in the memory base")
+  (MTSPR 8 arg1)
+  (BCLRL 20 0 "Jump into the Ivory code") ;R0
+  ;; On return, fall-through to resumeemulated
+  )
+
+;; Native mode returns to here with the return address in arg1 (why not r0)?
+(define-procedure |resumeemulated| ()
+    ;; RESTARTSP will be set by nextInstruction
+    (LD arg2 CACHELINE_ANNOTATION (iCP))
+    (sldi iPC Ivory 2)
+    (SUBF iPC arg1 iPC "iPC:=4*Ivory-arg1")
+    (NEG iPC iPC)
+    (srdi iPC iPC 1)
+    ;; --- Don't need to check sequence-break on this path, now that
+    ;; branch translations do it directly
+    (long-branch-if-nonzero arg2 interpretInstructionPredicted)
+    (B interpretInstructionforBranch)
+    )
+
+
+(comment "Fin.")

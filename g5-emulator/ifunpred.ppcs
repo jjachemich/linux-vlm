@@ -1,0 +1,115 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+;(include-header "ifunhead.s")
+
+(comment "Predicates.")
+
+
+;; |DoEq| and |DoEqNoPop| are in IFUNCOM2.PPCS
+
+
+;; DoEqNoPop is handled here, too...
+(define-instruction |DoEql| :operand-from-stack-immediate (:own-immediate t)
+    (srdi arg6 arg3 #.(+ 10 2))
+    ;; #xF800 is the magic mask for EQ-NOT-EQL
+    (stack-top t3 "Load arg1 into t3")
+    (load-constant t4 #xF800 "EQ-NOT-EQL mask") 
+    (Get-NIL t11) 
+    (Get-T t12 "Assume result will be T")
+    (XOR t5 arg1 t3)
+    (sldi t5 t5 #.(- 32 6) "Shift left to lose CDRCODE.")
+    (ANDI-DOT arg6 arg6 1 "1 if no-pop, 0 if pop")
+    (branch-if-zero t5 eqldone)
+    (comment "They are not EQ, if types different or not numeric return nil")
+    (srdi t5 t5 #.(+ 32 (- 32 6)) "Get the tag alone")
+    (mov t12 t11 "Now assume result will be NIL")
+    (branch-if-nonzero t5 eqldone "Return NIL if tags different")
+    (srdi t3 t3 32 "Get tag, check for numeric")
+    (TagType t3 t3)
+    (SRD t4 t4 t3 "Type is now a bit mask")
+    (ANDI-DOT R31 t4 1 "BLBS")
+    (BC 4 2 eqlexc "If funny numeric type, exception")
+  (label eqldone)
+    (sldi t4 arg6 3)
+    (ADD iSP t4 iSP "Either a stack-push or a stack-write")
+    (GetNextPCandCP)
+    (stack-write iSP t12)
+    (ContinueToNextInstruction-NoStall)
+  (immediate-handler |DoEql|)
+    (exts arg2 arg2 8 "Sign extend arg2")
+    (stack-read2-disp-signed iSP 0 t4 t3 "t4=tag t3=data")
+    (srdi arg6 arg3 #.(+ 10 2))
+    (clrldi t3 t3 32)
+    (Get-NIL t11)
+    (TagType t4 t4)
+    (Get-T t12)
+    (SUBF arg2 arg2 t3)
+    (XORI t4 t4 |TypeFixnum|)
+    (ANDI-DOT arg6 arg6 1 "1 if no-pop, 0 if pop")
+    (OR t4 arg2 t4)
+    (sldi t5 arg6 3)
+    (ADD iSP t5 iSP "Either a stack-push or a stack-write")
+    (GetNextPCandCP)
+    (CMPI 0 1 t4 0)
+    (BC 4 2 skip11 "B.NE")
+    (mov t11 t12)
+   (unlikely-label skip11)
+    (stack-write iSP t11 "Yes Virginia, this does dual issue with above")
+    (ContinueToNextInstruction-NoStall)
+  (label eqlexc)
+    (prepare-exception eql 0 arg1)
+    (arithmetic-exception))
+
+
+;; |DoEndp| is in IFUNCOM2.PPCS
+
+
+;; |DoEqualNumber| and |DoEqualNumberNoPop| are in IFUNCOM2.PPCS
+
+;; |DoLessp| and |DoLesspNoPop| are in IFUNCOM2.PPCS
+
+;; Handles DoGreaterpNoPop as well
+(define-instruction |DoGreaterp| :operand-from-stack (:own-immediate t :needs-tos t)
+    (simple-binary-arithmetic-predicate
+      greaterp SUBF 4 1 t 2 12 t |GreaterpMMExc| t) ;FCMP yields CR.GT
+  (immediate-handler |DoGreaterp|)
+    (simple-binary-immediate-arithmetic-predicate
+      greaterp SUBF 4 1 t))
+
+;; Handles DoLogtestNoPop as well
+(define-instruction |DoLogtest| :operand-from-stack (:own-immediate t :needs-tos t)
+    (simple-binary-arithmetic-predicate
+      logtest AND 12 2 nil nil nil)
+  (immediate-handler |DoLogtest|)
+    (simple-binary-immediate-arithmetic-predicate
+      logtest AND 12 2 t))
+
+
+;;; Here are exception handlers for predicates.  We have moved them out of
+;;; line because they are rarely used, and we get better code packing by
+;;; taking these cases out of line.  Since they either trap, or avoid what
+;;; would otherwise have been a trap, the cost of jumping out of line is
+;;; negligible, while the benefits of code packing help the normal cases.
+
+;; --- These should all be a single routine now ---
+
+;; Exception case for EqualNumber and EqualNumberNoPop
+(simple-binary-arithmetic-exceptions equal-number |EqualNumberMMExc| :else1 t)
+;; Exception case for Lessp and LesspNoPop
+(simple-binary-arithmetic-exceptions lessp |LesspMMExc| :else1 t)
+;; Exception case for Greaterp and Greaterp
+(simple-binary-arithmetic-exceptions greaterp |GreaterpMMExc| :else1 t)
+
+
+;; |DoZerop| is in IFUNCOM1.PPCS
+
+;; |DoMinusp| and |DoPlusp| are in IFUNCOM2.PPCS
+
+;; |DoTypeMember| is in IFUNCOM1.PPCS
+
+
+
+(comment "Fin.")
+ 

@@ -1,0 +1,17 @@
+genera.network: tap1:CHAOS|402;host=777,tap0:INTERNET|192.168.2.2;gateway=192.168.2.1;host=192.168.2.1
+
+genera.virtualMemory: 512
+genera.trace: no
+genera.worldSearchPath: /home/lispm/snap5/jj-vlm:/home/lispm/snap5/vlods:/var/lib/symbolics
+*main.geometry: 1280x1024+0+1024
+*coldLoad.geometry: 800x600+1280+0
+*coldLoad.iconic: yes
+*coldLoad.background: gray85
+*coldLoad.foreground: gray15
+
+genera.world: ../vlods/Genera-8-5.vlod
+genera.spy: no
+
+genera.debugger: VLM_debugger
+
+

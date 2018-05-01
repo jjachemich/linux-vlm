@@ -1,0 +1,51 @@
+
+VLM 2.0 Project planning:  project tasks.
+
+D,#TD1PsT[Begin using 006 escapes](1 0 (NIL 0) (NIL :ITALIC NIL) "CPTFONTI")(This is what we have been told is approved so0 1far.)
+
+0Development time:
+
+1a.Make Weak Space Work (ptw) - two weeks of research and,
+	optimistically, four weeks to make it work.
+1b. Slow DBFS -Statice () - Palter says two weeks.
+
+2. Joshua () - 
+
+3. Translator (paul) -
+
+4. Concordia (Stratis) - done, needs testing.
+
+5. Metering (swm) - done
+
+Performance -  
+
+Multiple VLMs on a single host (qa) - document and test.
+
+QA/SRG time - six weeks (30 days) after final freeze. 
+
+
+
+
+
+
+
+1(Not yet determined if these go in to release 2.0)
+
+02. Floating point/Bignum "microcode" support () -	
+4. Motif Interface hack (swm) - 
+5. Make Genera have a single space type () - - currently cuts regions in
+	half
+6. Tape (palter) - half done, AXP support not there yet.
+7. Book Reader Documentation () - (Get Concordia to write Book Reader
+	files) 
+8. Gracefully degrade when there are insufficient map entries - e.g.,
+	disable IDS and continue
+9. Op Code reordering.
+10. Revamp tv: and color: doc to use CLIM. - 2 - 
+11. Implement IFUNCOM 1 and 2 - 3 - 
+12. Take FSEdit out of LMFS and put back in Genera. - make it use CLIM?
+
+1Customer suggestions
+
+01. At LUV barmar suggested that we remove the disk meters in peek if
+indeed they are not hooked to anything in open genera. - billw

@@ -1,0 +1,73 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+;(include-header "ifunhead.s")
+
+(comment "Support for double precision floating point.")
+
+(define-subroutine |FetchDoubleFloat|
+		   (arg2 arg5 arg6 t5 t6 t7 t8 t9 t10 t11 t12)
+		   (r0)
+  (using-multiple-memory-reads (t9 t10 t11 t12)
+   (fetch-double-float-internal  arg2 arg5 arg6 t5 t6 t7 t8)
+   ))
+
+(define-subroutine |ConsDoubleFloat|
+		   (arg2 arg5 arg6 t5 t6 t7 t8 t9 t10)
+		   (r0)
+  (clr R31)
+  (cons-double-float-internal  arg5 arg6 R31 arg2 t5 t6 t7 t8 t9 t10))
+
+(define-instruction |DoDoubleFloatOp| :operand-from-stack-immediate ()
+    ;; The top four things are the stack are fixnums that represent the
+    ;; two double-float quantities.  We don't bother to type-check them.
+    (LWA arg3 -20 (iSP) "X high")
+    (LWA arg4 -12 (iSP) "X low")
+    (LWA arg5 -4 (iSP) "Y high")
+    (LWA arg6  4 (iSP) "Y low")
+    (sldi arg3 arg3 32 "Get high part up top")
+    (clrldi arg4 arg4 32)
+    (sldi arg5 arg5 32 "Get high part up top")
+    (clrldi arg6 arg6 32)
+    (OR arg3 arg3 arg4 "ARG3 is now X")
+    (OR arg5 arg5 arg6 "ARG5 is now Y")
+    (STD arg3 PROCESSORSTATE_FP0 (ivory))
+    (STD arg5 PROCESSORSTATE_FP1 (ivory))
+    (srdi t2 arg1 32 "Immediate tag")
+    (clrldi t1 arg1 32 "Immediate data")
+    (CheckDataType t2 |TypeFixnum| doublefloatiop t3)
+    (LFD f1 PROCESSORSTATE_FP0 (ivory))
+    (LFD f2 PROCESSORSTATE_FP1 (ivory))
+    (floating-exception-checking-prelude)
+    (register-dispatch t1  t2 t3
+      (|DoubleFloatOpAdd|
+	(FADD f1 f2 f1))
+      (|DoubleFloatOpSub|
+	(FSUB f1 f2 f1))
+      (|DoubleFloatOpMultiply|
+	(FMUL f1 f2 f1))
+      (|DoubleFloatOpDivide|
+	(FDIV f1 f2 f1)))
+    (floating-exception-checking-postlude doublefloatexc t1)
+    (get-nil t3 "There was no FP exception")
+  (unlikely-label doublefloatmerge)
+    (STFD f1 PROCESSORSTATE_FP0 (ivory))
+    (LWA t1 PROCESSORSTATE_FP0+4 (ivory))
+    (LWA t2 PROCESSORSTATE_FP0 (ivory))
+    ;;+++ The next four lines should be made more efficient
+    (ADDI iSP iSP -32 "Pop all the operands")
+    (stack-push-fixnum t2 t4 "Push high result")
+    (stack-push-fixnum t1 t4 "Push low result")
+    (stack-push t3 t4 "Push the exception predicate")
+    (ContinueToNextInstruction)
+  (label doublefloatexc)
+    ;; We don't signal a real exception because this gets used in Genera's
+    ;; floating point exception handlers, and we don't want recursive lossage.
+    (get-t t3 "Indicate an FP exception occurred")
+    (B doublefloatmerge)
+  (label doublefloatiop)
+    (illegal-operand unknown-double-float-op))
+
+
+(comment "Fin.")

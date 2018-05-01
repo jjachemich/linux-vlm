@@ -1,0 +1,132 @@
+-*- Mode: Text -*-
+
+
+Priorities:
+	0 - done or patch pending
+	1 - Highest
+	2 - Middle
+	3 - Lowest
+
+
+D,#TD1PsT[Begin using 006 escapes](1 0 (NIL 0) (NIL :BOLD NIL) "CPTFONTCB")Assignments for Applied Technology group members (with priorities):
+
+(2 0 (NIL 0) (NIL :ITALIC NIL) "CPTFONTI")Item#   Description 0 2  (assigned to)- priority - comments
+
+01 Genera / AXP running "without" a Namespace (ESC/JRD) - 1 -
+	Includes Set Site/ Define Site
+
+2 Installation Script (Tenny) - 1 - two weeks 
+
+3 RPC (Tenny/Kaufman/Palter) - 1 - patch pending, more work may be
+	needed. 
+
+4 Network Performance (ESC/JRD) - 2 -
+	Test to determine cause of congestion.
+
+5 Flatten Source Code (Inada) - 2 -
+
+
+
+1Advanced Development Assignments (with priorities):
+
+2Item#   Description 0 2  (assigned to)-  comments
+
+Completed:
+0 
+1. Command Line Interface (Palter) 
+2. Free Space Accounting (ptw) - patch pending
+3. Test "Unaligned Kernel Access" (Palter) -  done
+	A problem with DEC packet filter, it has been reported.
+4. FIX/FLOAT mod to make CLIM work better (Paul/SWM)   
+5. EQUAL-NUMBER (Paul) - 
+6. Call DEC to find out about how thread priorities work. 
+7. Complete Pass for SYSTEM CASE (Palter/SWM)
+8. Dike out unnecessary CP commands (Palter)  
+	- including Fix CP commands.
+9. Fix Clock (Paul) 
+10. Idle Loop (Palter)
+
+2Priority 10 
+
+1. Incremental Worlds (ptw/Palter) -  one week each.
+
+2. Keyboard Support improvements  (Jwatkins/Palter) -  one week
+	Change the cold load window to use the same keyboard mapping as
+		Genera (Palter)
+	Printed keyboard template - 
+
+3. SIGINT Handler (Palter) - Catch c-C and c-\ - use the same or similar
+	verbiage as is used in the Ivory/Shut Down menu item 
+
+4. Array Register improvements (Paul) - 
+
+5. Document NetInstaBooting. (ptw) -  
+
+6. Sanitize Doc for terminology inconsistencies (Stratis/all)
+	- awaiting name of product.
+
+7. General Performance (swm/ptw/Paul) - 
+
+2Priority 2 
+
+01. Idle Loop Part II (Palter) -  three days 
+
+2. FUNCTION-Q (Palter) -  
+
+3. Proper Reset Mechanism (Palter) - 
+
+4. Elementary Window System Locks (swm) - 
+
+5. Patching facility for .c .h and .as file on the VLM. (swm) - 
+
+6. Gabriel Performance (Paul) - 
+
+7. Document the VLM Debugger (ptw/Stratis) -  one day 
+
+8. Document/fix HALT MACHINE add SHUTDOWN (ptw/Stratis) -  two days 
+
+9. Install the ether-buffer-area fix (Palter/ptw) - 
+
+10. GC Performance (ptw) - 
+	including Resident pages work.
+	including GC more coprocessor calls (e.g. find a structure)
+			- one to five five days
+
+2Priority 3
+
+01. Page Fault Accounting (ptw) -  need DEC to help on this.
+
+1Unassigned:
+
+2Item#   Description 0 2 - priority - comments
+
+01. Revamp tv: and color: doc to use CLIM. - 2 - 
+
+2. Implement IFUNCOM 1 and 2 - 3 - 
+
+3. Take FSEdit out of LMFS and put back in Genera. - make it use CLIM?
+
+4. Fix arrow going to reverse video on scroll bar - reported by Dodds.
+
+5. New Herald with new name for FCS - 1-  
+
+1Wait for VLM 2.0
+
+2Item#   Description 0 2  (assigned to)- priority - comments
+
+01. Multiple VLMs on a single host (qa) - document and test.
+2. Floating point/Bignum "microcode" support () -
+3. Make Weak Space Work () - - need to make transport trap work.
+4. Motif Interface hack (swm) - 
+5. Make Genera have a single space type () - - currently cuts regions in
+	half
+6. Statice ()
+7. Joshua ()
+8. Concordia ()
+9. Metering (swm) -
+10. Tape (palter) -
+11. Book Reader Documentation () - (Get Concordia to write Book Reader
+	files) 
+12. Gracefully degrade when there are insufficient map entries - e.g.,
+	disable IDS and continue
+13. Op Code reordering.

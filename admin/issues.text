@@ -1,0 +1,35 @@
+Open issues with DEC:
+
+Genera life support network issue -- Jim should have passed our question
+about promiscuous mode/network packet filter/etc. to development.  --
+Answer received, but unsatisfactory in practice.  New much more involved
+query sent 12/21.
+
+DBX fails with the emulator because of some error having to do with
+select().  --  Have patch, but tape drive is croaked so can't load it!
+[field service log # LB5ED0 for tape drive problem]  [Tape drive fixed]
+
+mmap has limit of 192 discontiguous segments; asked how to increase.
+Using more memory than you have hangs the machine; have program to test
+for size of swap space but it doesn't work.  [increased mmap segments]
+
+12/18: yduJ reported a hideous bug in BL10 where you can't reuse a port
+       number until N hours later when it has closed itself.
+
+12/18: yduJ sent off a crash dump to DEC from the tcp_output panic.
+
+12/21: Palter found a bug in the C compiler that causes it to dump core.
+
+12/21: Palter asked a bunch of threads questions about warnings from
+       header files and support level of dbx and thread-friendly x libraries.
+
+Genera command line should allow user to specify swap-image size and
+pass in to genera (via life-support) to set *count-swap-pages*.  This
+will allow trading off Genera GC overhead vs. how much swap space it
+tries to grab.
+
+Do stacks need to be chunk-aligned in Genera?  I don't think so since
+they should not ever get protected or transport trap.
+
+Genera "allows" 2000 regions, which could me you could have 2000 mmap
+extents!

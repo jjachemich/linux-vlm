@@ -1,0 +1,62 @@
+Date: Thu, 11 Feb 1993 12:57 EST
+From: James Damoulakis <jimd@nvsd4.enet.dec>
+To: tenny@symbolics
+Apparently-To: tenny@symbolics
+Subject: OSF/1 QAR Info 
+
+
+Hi Dave,
+
+I have attached below the procedure for a seed unit customer to submit 
+a QAR.
+
+Also, the base level 11 and 12 release notes are only available in postscript.
+I will send you the postscript files in follow-on messages. (Hopefully they
+won't get truncated along the way!).
+
+Regards, 
+
+Jim
+
+    
+    DIGITAL EQUIPMENT CORPORATION
+    
+    PRODUCT SUPPORT FOR ALPHA DEVELOPMENT PRODUCTS IN THE U.S.
+    
+    
+         It is important to Digital that your early Alpha Development System be
+         employed effectively.  We have organized special product support to
+         minimize time lost due to software changes or hardware downtime.  You
+         were pre-registered for Alpha product support when you signed the Loan
+         of Development Product Agreement.
+    
+         All problems should first be logged by dialing 1-800-354-9000 and
+         pressing "3" as suggested by the automated call prompter.  Enter the
+         special access code "1999" and identify yourself to the call screening
+         specialist as an Alpha Development System user.
+    
+         DSNLink and DSIN are also available from your VAX/VMS or RISC/ULTRIX
+         system, allowing for toll-free, electronic software support.  For
+         further information, call 1-800-354-9000.
+
+         Software problems will be addressed by the first available specialist
+         at the Customer Support Center.  Alpha Development System users
+         receive high priority.  Calls relating specifically to the use of
+         Alpha Migration Tools, the migration process, or migration activity
+         will be forwarded to the supporting Alpha Migration Center, which will
+         then contact you.
+    
+         If it is determined that an on-site repair visit is required, the
+         nearest Digital Service Center will be notified and you will receive
+         prompt support.
+    
+         If resolution cannot be accomplished by the engineer or specialist,
+         Digital Services will escalate the problem to engineering and notify
+         you that this has been done.  Digital Services will monitor the status
+         of the problem and either resolve the problem or notify you when
+         resolution can be expected.
+    
+         Extended support coverage plans to meet particular needs can be
+         arranged by your local Digital Services office.
+    
+    

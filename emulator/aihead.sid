@@ -1,0 +1,605 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+(define-values |Type| 
+  (|Null| 0)					; 00 Unbound variable/function uninitialized storage 
+  (|MonitorForward| 1)				; 01 This cell being monitored 
+  (|HeaderP| 2)					; 02 Structure header with pointer field 
+  (|HeaderI| 3)					; 03 Structure header with immediate bits 
+  (|ExternalValueCellPointer| 4)		; 04 Invisible except for binding 
+  (|OneQForward| 5)				; 05 Invisible pointer (forwards one cell) 
+  (|HeaderForward| 6)				; 06 Invisible pointer (forwards whole structure) 
+  (|ElementForward| 7)				; 07 Invisible pointer in element of structure 
+  (|Fixnum| 8)					; 10 Small integer 
+  (|SmallRatio| 9)				; 11 Ratio with small numerator and denominator 
+  (|SingleFloat| 10)				; 12 SinglePrecision floating point 
+  (|DoubleFloat| 11)				; 13 DoublePrecision floating point 
+  (|Bignum| 12)					; 14 Big integer 
+  (|BigRatio| 13)				; 15 Ratio with big numerator or denominator 
+  (|Complex| 14)				; 16 Complex number 
+  (|SpareNumber| 15)				; 17 A number to the hardware trap mechanism 
+  (|Instance| 16)				; 20 Ordinary instance 
+  (|ListInstance| 17)				; 21 Instance that masquerades as a cons 
+  (|ArrayInstance| 18)				; 22 Instance that masquerades as an array 
+  (|StringInstance| 19)				; 23 Instance that masquerades as a string 
+  (NIL 20)					; 24 The symbol NIL 
+  (|List| 21)					; 25 A cons 
+  (|Array| 22)					; 26 An array that is not a string 
+  (|String| 23)					; 27 A string 
+  (|Symbol| 24)					; 30 A symbol other than NIL 
+  (|Locative| 25)				; 31 Locative pointer 
+  (|LexicalClosure| 26)				; 32 Lexical closure of a function 
+  (|DynamicClosure| 27)				; 33 Dynamic closure of a function 
+  (|CompiledFunction| 28)			; 34 Compiled code 
+  (|GenericFunction| 29)			; 35 Generic function (see later section) 
+  (|SparePointer1| 30)				; 36 Spare 
+  (|SparePointer2| 31)				; 37 Spare 
+  (|PhysicalAddress| 32)			; 40 Physical address 
+  (|NativeInstruction| 33)			; 41 NativeInstruction 
+  (|BoundLocation| 34)				; 42 Deep bound marker 
+  (|Character| 35)				; 43 Common Lisp character object 
+  (|LogicVariable| 36)				; 44 Unbound logic variable marker 
+  (|GCForward| 37)				; 45 ObjectMoved flag for garbage collector 
+  (|EvenPC| 38)					; 46 PC at first instruction in word 
+  (|OddPC| 39)					; 47 PC at second instruction in word 
+  (|CallCompiledEven| 40)			; 50 Start call address is compiled function 
+  (|CallCompiledOdd| 41)			; 51 Start call address is compiled function 
+  (|CallIndirect| 42)				; 52 Start call address is function cell 
+  (|CallGeneric| 43)				; 53 Start call address is generic function 
+  (|CallCompiledEvenPrefetch| 44)		; 54 Like above but prefetching is desireable 
+  (|CallCompiledOddPrefetch| 45)		; 55 Like above but prefetching is desireable 
+  (|CallIndirectPrefetch| 46)			; 56 Like above but prefetching is desireable 
+  (|CallGenericPrefetch| 47)			; 57 Like above but prefetching is desireable 
+  (|PackedInstruction60| 48)			;; HalfWord (packed) instructions consume 4 bits of data type field (opcodes 60..77). 
+  (|TypePackedInstruction61| 49)
+  (|TypePackedInstruction62| 50)
+  (|PackedInstruction63| 51)
+  (|TypePackedInstruction64| 52)
+  (|TypePackedInstruction65| 53)
+  (|PackedInstruction66| 54)
+  (|TypePackedInstruction67| 55)
+  (|TypePackedInstruction70| 56)
+  (|PackedInstruction71| 57)
+  (|TypePackedInstruction72| 58)
+  (|TypePackedInstruction73| 59)
+  (|PackedInstruction74| 60)
+  (|TypePackedInstruction75| 61)
+  (|TypePackedInstruction76| 62)
+  (|PackedInstruction77| 63))
+
+(define-values |Cdr| 
+  (|Next| 0)
+  (|Nil| 1) 
+  (|Normal| 2))
+	
+(define-values |Array|
+  (|ElementTypeFixnum| 0)
+  (|ElementTypeCharacter| 1)
+  (|ElementTypeBoolean| 2)
+  (|ElementTypeObject| 3)
+  ;; Prefix Header 32 bit field
+  (|TypeFieldPos| 26)
+  (|TypeFieldSize| 6)
+  (|TypeFieldMask| #x3F)
+  (|ElementTypePos| 30)
+  (|ElementTypeSize| 2)
+  (|ElementTypeMask| 3)
+  (|BytePackingPos| 27)
+  (|BytePackingSize| 3)
+  (|BytePackingMask| 7)
+  (|ListBitPos| 26)
+  (|ListBitSize| 1)
+  (|ListBitMask| 1)
+  (|NamedStructureBitPos| 25)
+  (|NamedStructureBitSize| 1)
+  (|NamedStructureBitMask| 1)
+  (|Spare1Pos| 24)
+  (|Spare1Size| 1)
+  (|Spare1Mask| 1)
+  (|LongPrefixBitPos| 23)
+  (|LongPrefixBitSize| 1)
+  (|LongPrefixBitMask| 1)
+  (|LeaderLengthFieldPos| 15)
+  (|LeaderLengthFieldSize| 8)
+  (|LeaderLengthFieldMask| #xFF)
+
+  (|LengthPos| 0)				;For array-prefix-short
+  (|LengthSize| 15)
+  (|LengthMask| #x7FFF)
+
+  (|DisplacedBitPos| 14)			;For array-prefix-long
+  (|DisplacedBitSize| 1)
+  (|DisplacedBitMask| 1)
+  (|DiscontiguousBitPos| 13)
+  (|DiscontinuousBitSize| 1)
+  (|DiscontiguousBitMask| 1)
+  (|LongSparePos| 3)
+  (|LongSpareSize| 12)
+  (|LongSpareMask| #xFFF)
+  (|LongDimensionsFieldPos| 0)
+  (|LongDimensionsFieldSize| 3)
+  (|LongDimensionsFieldMask| 7)
+
+  ;; Array Register fileds
+  (|RegisterElementTypePos| 30)
+  (|RegisterElementTypeSize| 2)
+  (|RegisterElementTypeMask| 3)
+  (|RegisterBytePackingPos| 27)
+  (|RegisterBytePackingSize| 3)
+  (|RegisterBytePackingMask| 7)
+  (|RegisterByteOffsetPos| 22)
+  (|RegisterByteOffsetSize| 5)
+  (|RegisterByteOffsetMask| #x1F)
+  (|RegisterEventCountPos| 0)
+  (|RegisterEventCountSize| 22)
+  (|RegisterEventCountMask| #x3FFFFF))
+	
+(define-values |ValueDisposition|
+  (|Effect| 0)
+  (|Value| 1)
+  (|Return| 2)
+  (|Multiple| 3))	
+
+(define-values |Opcode|
+  ;; List manipulation 
+  (|Car| #o00)
+  (|Cdr| #o01)
+  (|SetToCar| #o0140)
+  (|SetToCdr| #o0141)
+  (|SetToCdrPushCar| #o0142)
+  (|Rplaca| #o0200)
+  (|Rplacd| #o0201)
+  (|Rgetf| #o0225)
+  (|Member| #o0226)
+  (|Assoc| #o0227)
+  ;; AI Instructions 
+  (|Dereference| #o013)
+  (|Unify| #o0237)
+  (|PushLocalLogicVariables| #o0103)
+  (|PushGlobalLogicVariable| #o055)
+  (|LogicTailTest| #o014)
+  ;; Binary predicates 
+  (|Eq| #o0270)
+  (|EqNoPop| #o0274)
+  (|Eql| #o0263)
+  (|EqlNoPop| #o0267)
+  (|EqualNumber| #o0260)			
+  (|EqualNumberNoPop| #o0264)
+  (|Greaterp| #o0262)
+  (|GreaterpNoPop| #o0266)
+  (|Lessp| #o0261)
+  (|LesspNoPop| #o0265)
+  (|Logtest| #o0273)
+  (|LogtestNoPop| #o0277)
+  (|TypeMember| #o040)				;also 41 42 43 
+  (|TypeMemberNoPop| #o044)			;also 45 46 47 
+  ;; Unary predicates 
+  (|Endp| #o02)
+  (|Plusp| #o036)
+  (|Minusp| #o035)
+  (|Zerop| #o034)
+  ;; Numeric operations 
+  (|Add| #o0300)
+  (|Sub| #o0301)
+  (|UnaryMinus| #o0114)
+  (|Increment| #o0143)
+  (|Decrement| #o0144)
+  (|Multiply| #o0202)
+  (|Quotient| #o0203)
+  (|Ceiling| #o0204)
+  (|Floor| #o0205)
+  (|Truncate| #o0206)
+  (|Round| #o0207)
+  (|RationalQuotient| #o0211)
+  (|Max| #o0213)
+  (|Min| #o0212)
+  (|Logand| #o0215)
+  (|Logior| #o0217)
+  (|Logxor| #o0216)
+  (|Ash| #o0232)
+  (|Rot| #o0220)
+  (|Lsh| #o0221)
+  (|32BitPlus| #o0302)
+  (|32BitDifference| #o0303)
+  (|MultiplyDouble| #o0222)
+  (|AddBignumStep| #o0304)
+  (|SubBignumStep| #o0305)
+  (|MultiplyBignumStep| #o0306)
+  (|DivideBignumStep| #o0307)
+  (|LshcBignumStep| #o0223)
+  (|DoubleFloatOp| #o016)
+  ;; Data movement 
+  (|Push| #o0100)
+  (|Pop| #o0340)
+  (|Movem| #o0341)
+  (|PushNNils| #o0101)
+  (|PushAddress| #o0150)
+  (|SetSpToAddress| #o0151)
+  (|SetSpToAddressSaveTos| #o0152)
+  (|PushAddressSpRelative| #o0102)
+  (|StackBlt| #o0224)
+  (|StackBltAddress| #o0352)
+  ;; FieldExtraction instructions 
+  (|Ldb| #o0170)
+  (|Dpb| #o0370)
+  (|CharLdb| #o0171)
+  (|CharDpb| #o0371)
+  (|PLdb| #o0172)
+  (|PDpb| #o0372)
+  (|PTagLdb| #o0173)
+  (|PTagDpb| #o0373)
+  ;; Array operations 
+  (|Aref1| #o0312)
+  (|Aset1| #o0310)
+  (|Aloc1| #o0313)
+  (|Setup1DArray| #o03)
+  (|SetupForce1DArray| #o04)
+  (|FastAref1| #o0350)
+  (|FastAset1| #o0351)
+  (|ArrayLeader| #o0316)
+  (|StoreArrayLeader| #o0314)
+  (|AlocLeader| #o0317)
+  ;; Branch instructions 
+  (|Branch| #o0174)
+  (|BranchTrue| #o060)
+  (|BranchTrueElseExtraPop| #o061)
+  (|BranchTrueAndExtraPop| #o062)
+  (|BranchTrueExtraPop| #o063)
+  (|BranchTrueNoPop| #o064)
+  (|BranchTrueAndNoPop| #o065)
+  (|BranchTrueElseNoPop| #o066)
+  (|BranchTrueAndNoPopElseNoPopExtraPop| #o067)
+  (|BranchFalse| #o070)
+  (|BranchFalseElseExtraPop| #o071)
+  (|BranchFalseAndExtraPop| #o072)
+  (|BranchFalseExtraPop| #o073)
+  (|BranchFalseNoPop| #o074)
+  (|BranchFalseAndNoPop| #o075)
+  (|BranchFalseElseNoPop| #o076)
+  (|BranchFalseAndNoPopElseNoPopExtraPop| #o077)
+  (|LoopDecrementTos| #o0175)
+  (|LoopIncrementTosLessThan| #o0375)
+  ;; Block instructions 
+  (|Block0Read| #o0120)
+  (|Block1Read| #o0121)
+  (|Block2Read| #o0122)
+  (|Block3Read| #o0123)
+  (|Block0ReadShift| #o0124)
+  (|Block1ReadShift| #o0125)
+  (|Block2ReadShift| #o0126)
+  (|Block3ReadShift| #o0127)
+  (|Block0ReadAlu| #o0160)
+  (|Block1ReadAlu| #o0161)
+  (|Block2ReadAlu| #o0162)
+  (|Block3ReadAlu| #o0163)
+  (|Block0ReadTest| #o0130)
+  (|Block1ReadTest| #o0131)
+  (|Block2ReadTest| #o0132)
+  (|Block3ReadTest| #o0133)
+  (|Block0Write| #o030)
+  (|Block1Write| #o031)
+  (|Block2Write| #o032)
+  (|Block3Write| #o033)
+  ;;Instruction calling
+  (|StartCall| #o010)
+  (|FinishCallN| #o0134)
+  (|FinishCallNApply| #o0135)
+  (|FinishCallTos| #o0136)
+  (|FinishCallTosApply| #o0137)
+  (|EntryRestAccepted| #o0176)
+  (|EntryRestNotAccepted| #o0177)
+  (|LocateLocals| #o050)
+  (|ReturnSingle| #o0115)
+  (|ReturnMultiple| #o0104)
+  (|ReturnKludge| #o0105)
+  (|TakeValues| #o0106)
+  ;; Binding instructions 
+  (|BindLocativeToValue| #o0236)
+  (|BindLocative| #o05)
+  (|UnbindN| #o0107)
+  (|RestoreBindingStack| #o06)
+  ;; Catch 
+  (|CatchOpen| #o0376)
+  (|CatchClose| #o051)
+  ;; Lexical variables - Each takes 8 opcodes 
+  (|PushLexicalVar| #o020)			;also  21  22  23  24  25  26  27 
+  (|PopLexicalVar| #o0240)			;also 241 242 243 244 245 246 247 
+  (|MovemLexicalVar| #o0250)			;also 251 252 253 254 255 256 257 
+  ;; Instance variables 
+  (|PushInstanceVariable| #o0110)
+  (|PopInstanceVariable| #o0320)
+  (|MovemInstanceVariable| #o0321)
+  (|PushAddressInstanceVariable| #o0111)
+  (|PushInstanceVariableOrdered| #o0112)
+  (|PopInstanceVariableOrdered| #o0322)
+  (|MovemInstanceVariableOrdered| #o0323)
+  (|PushAddressInstanceVariableOrdered| #o0113)
+  (|InstanceRef| #o0324)
+  (|InstanceSet| #o0325)
+  (|InstanceLoc| #o0326)
+  ;; Subprimitives 
+  (|Ephemeralp| #o07)
+  (|UnsignedLessp| #o0331)
+  (|UnsignedLesspNoPop| #o0335)
+  (|Alu| #o0214)
+  (|AllocateListBlock| #o0311)
+  (|AllocateStructureBlock| #o0315)
+  (|PointerPlus| #o0230)
+  (|PointerDifference| #o0231)
+  (|PointerIncrement| #o0145)
+  (|ReadInternalRegister| #o0154)
+  (|WriteInternalRegister| #o0155)
+  (|CoprocessorRead| #o0156)
+  (|CoprocessorWrite| #o0157)
+  (|MemoryRead| #o0116)
+  (|MemoryReadAddress| #o0117)
+  (|Tag| #o012)
+  (|SetTag| #o0327)
+  (|StoreConditional| #o0233)
+  (|MemoryWrite| #o0234)
+  (|PStoreContents| #o0235)
+  (|SetCdrCode1| #o0146)
+  (|SetCdrCode2| #o0147)
+  (|MergeCdrNoPop| #o0342)
+  (|GenericDispatch| #o052)
+  (|MessageDispatch| #o053)
+  (|Jump| #o011)
+  (|CheckPreemptRequest| #o054)
+  (|NoOp| #o056)
+  (|Halt| #o057))
+
+(define-values |Control|
+  (|Apply| #o400000)
+  (|CleanupBits| #o700000000)
+  (|CallStarted| #o20000000)
+  (|ExtraArgument| #o400)            ;1<<8
+  (|ArgumentSize| #o377)
+  (|CallerFrameSize| #o377000)
+  (|ValueDisposition| #o3000000))	
+
+(define-values |InternalRegister|
+  (|EA| #o0)
+  (|FP| #o1)
+  (|LP| #o2)
+  (|SP| #o3)
+  (|MacroSP| #o4)
+  (|StackCacheLowerBound| #o5)
+  (|BAR0| #o6)
+  (|BAR1| #o206)
+  (|BAR2| #o406)
+  (|BAR3| #o606)
+  (|PHTHash0| #o7)
+  (|PHTHash1| #o207)
+  (|PHTHash2| #o407)
+  (|PHTHash3| #o607)
+  (|EPC| #o10)
+  (|DPC| #o11)
+  (|Continuation| #o12)
+  (|AluAndRotateControl| #o13)
+  (|ControlRegister| #o14)
+  (|CRArgumentSize| #o15)
+  (|EphemeralOldspaceRegister| #o16)
+  (|ZoneOldspaceRegister| #o17)
+  (|ChipRevision| #o20)
+  (|FPCoprocessorPresent| #o21)
+  (|PreemptRegister| #o23)
+  (|IcacheControl| #o24)
+  (|PrefetcherControl| #o25)
+  (|MapCacheControl| #o26) 
+  (|MemoryControl| #o27)
+  (|ECCLog| #o30)
+  (|ECCLogAddress| #o31)
+  (|InvalidateMap0| #o32)
+  (|InvalidateMap1| #o232)
+  (|InvalidateMap2| #o432)
+  (|InvalidateMap3| #o632)
+  (|LoadMap0| #o33)
+  (|LoadMap1| #o233)
+  (|LoadMap2| #o433)
+  (|LoadMap3| #o633)
+  (|StackCacheOverflowLimit| #o34)
+  (|UcodeROMContents| #o35)
+  (|AddressMask| #o37)
+  (|EntryMaximumArguments| #o40)
+  (|LexicalVariable| #o41)
+  (|Instruction| #o42)
+  (|MemoryData| #o44)
+  (|DataPins| #o45)
+  (|ExtensionRegister| #o46)
+  (|MicrosecondClock| #o47)
+  (|ArrayHeaderLength| #o50)
+  (|LoadBAR0| #o52)
+  (|LoadBAR1| #o252)
+  (|LoadBAR2| #o452)
+  (|LoadBAR3| #o652)
+  (|TOS| #o1000)
+  (|EventCount| #o1001)
+  (|BindingStackPointer| #o1002)
+  (|CatchBlockList| #o1003)
+  (|ControlStackLimit| #o1004)
+  (|ControlStackExtraLimit| #o1005)
+  (|BindingStackLimit| #o1006)
+  (|PHTBase| #o1007)
+  (|PHTMask| #o1010)
+  (|CountMapReloads| #o1011)
+  (|ListCacheArea| #o1012)
+  (|ListCacheAddress| #o1013)
+  (|ListCacheLength| #o1014)
+  (|StructureCacheArea| #o1015)
+  (|StructureCacheAddress| #o1016)
+  (|StructureCacheLength| #o1017)
+  (|DynamicBindingCacheBase| #o1020)
+  (|DynamicBindingCacheMask| #o1021)
+  (|ChoicePointer| #o1022)
+  (|StructureStackChoicePointer| #o1023)
+  (|FEPModeTrapVectorAddress| #o1024)
+  (|MappingTableCache| #o1026)
+  (|MappingTableLength| #o1027)
+  (|StackFrameMaximumSize| #o1030)
+  (|StackCacheDumpQuantum| #o1031)
+  (|ConstantNIL| #o1040)
+  (|ConstantT| #o1041))	
+
+(define-values |CoprocessorRegister|
+  (|MicrosecondClock| #o1002)
+  (|HostInterrupt| #o1010)
+  (|VMRegisterCommand| #o1100)
+  (|VMRegisterAddress| #o1101)
+  (|VMRegisterExtent| #o1102)
+  (|VMRegisterAttributes| #o1103)
+  (|VMRegisterDestination| #o1104)
+  (|VMRegisterData| #o1105)
+  (|VMRegisterMaskLow| #o1106)
+  (|VMRegisterMaskHigh| #o1107)
+  (|VMRegisterCommandBlock| #o1110)
+  (|StackSwitch| #o1200)
+  (|FlushStackCache| #o1201)
+  (|FlushIDCaches| #o1202)
+  (|CalendarClock| #o1203)
+  (|FlushCachesForVMA| #o1204)
+  (|FlipToStack| #o1205)
+  (|UnwindStackForRestartOrApply| #o1206)
+  (|SaveWorld| #o1207)
+  (|ConsoleInputAvailableP| #o1210)
+  (|WaitForEvent| #o1211)
+  (|FlushHiddenArrayRegisters| #o1212)
+  (|ConsoleIO| #o1213)
+  (|AttachDiskChannel| #o1214)
+  (|GrowDiskPartition| #o1215)
+  (|DetachDiskChannel| #o1216)
+  (|UnixCrypt| #o1217))
+
+(define-values |Address|
+  (|NIL| #xf8041200)
+  (|T| #xf8041208))
+
+(define-values |ALUCondition|
+  (|SignedLessThanOrEqual| 0)
+  (|SignedLessThan| 1)
+  (|Negative| 2)
+  (|SignedOverflow| 3)
+  (|UnsignedLessThanOrEqual| 4)
+  (|UnsignedLessThan| 5)
+  (|Zero| 6)
+  (|High25Zero| 7)
+  (|Eq| 8)
+  (|Op1Ephemeralp| 9)
+  (|Op1TypeAcceptable| 10)
+  (|Op1TypeCondition| 11)
+  (|ResultTypeNil| 12)
+  (|Op2Fixnum| 13)
+  (|False| 14)
+  (|ResultCdrLow| 15)
+  (|CleanupBitsSet| 16)
+  (|AddressInStackCache| 17)
+  (|PendingSequenceBreakEnabled| 18)
+  (|ExtraStackMode| 19)
+  (|FepMode| 20)
+  (|FpCoprocessorPresent| 21)
+  (|Op1Oldspacep| 22)
+  (|StackCacheOverflow| 23)
+  (|OrLogicVariable| 24))
+
+(define-values |ALUAdderOp2|
+  (|Op2| 0)
+  (|Zero| 1)
+  (|Invert| 2)
+  (|MinusOne| 3))
+
+(define-values |ALUByteFunction|
+  (|Dpb| 0)
+  (|Ldb| 1))
+
+(define-values |ALUByteBackground|
+  (|Op1| 0)
+  (|RotateLatch| 1)
+  (|Zero| 2))
+
+(define-values |Boole|
+  (|Clear| 0)
+  (|And| 1)
+  (|AndC1| 2)
+  (|2| 3)
+  (|AndC2| 4)
+  (|1| 5)
+  (|Xor| 6)
+  (|Ior| 7)
+  (|Nor| 8)
+  (|Equiv| 9)
+  (|C1| 10)
+  (|OrC1| 11)
+  (|C2| 12)
+  (|OrC2| 13)
+  (|Nand| 14)
+  (|Set| 15))
+
+(define-values |ALUFunction|
+  (|Boolean| 0)
+  (|Byte| 1)
+  (|Adder| 2)
+  (|MultiplyDivide| 3))
+
+(define-values |Cycle|
+  (|DataRead| 0)
+  (|DataWrite| 1)
+  (|BindRead| 2)
+  (|BindWrite| 3)
+  (|BindReadNoMonitor| 4)
+  (|BindWriteNoMonitor| 5)
+  (|Header| 6)
+  (|StructureOffset| 7)
+  (|Scavenge| 8)
+  (|Cdr| 9)
+  (|GCCopy| 10)
+  (|Raw| 11)
+  (|RawTranslate| 12))
+
+(define-values |MemoryAction|
+  (|None| #o0)
+  (|Indirect| #o1)
+  (|Monitor| #o2)
+  (|Transport| #o4)
+  (|Trap| #o10)
+  (|Transform| #o20)
+  (|Binding| #o40))
+
+(define-values |TrapMode|
+  (|Emulator| 0)
+  (|ExtraStack| 1)
+  (|IO| 2)
+  (|FEP| 3))
+
+(define-values |ReturnValue|
+  (|Normal| 0)
+  (|Exception| 1)
+  (|IllegalOperand| 2))
+
+(define-values |HaltReason|
+  (|IllInstn| 1)
+  (|Halted| 2)
+  (|SpyCalled| 3)
+  (|FatalStackOverflow| 4)
+  (|IllegalTrapVector| 5))
+
+(define-values |TrapReason|
+  (|HighPrioritySequenceBreak| 1)
+  (|LowPrioritySequenceBreak| 2))
+
+(define-values |VMAttribute|
+  (|AccessFault| #o1)
+  (|WriteFault| #o2)
+  (|TransportFault| #o4)
+  (|TransportDisable| #o10)
+  (|Ephemeral| #o20)
+  (|Modified| #o40)
+  (|Exists| #o100)
+  (|CreatedDefault| #o105))
+
+(define-values |MemoryPage|
+  (|Size| #x2000)
+  (|AddressShift| 13))
+
+(define-values |DoubleFloatOp|
+  (|Add| #o0)
+  (|Sub| #o1)
+  (|Multiply| #o2)
+  (|Divide| #o3))

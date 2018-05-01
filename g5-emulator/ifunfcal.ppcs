@@ -1,0 +1,333 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+;(include-header "ifunhead.s")
+
+(comment "Function calling.")
+
+(comment "Start call.")
+
+;; |DoStartCall| is in IFUNCOM1.PPCS
+
+
+(comment "Finish call.")
+
+;; |DoFinishCallN| (and hence |DoFinishCallNApply|) are in IFUNCOM1.PPCS
+
+;; This handles both the apply and the non-apply cases (opcode in ARG3)
+(define-instruction |DoFinishCallTos| :10-bit-immediate (:own-immediate t)
+    (extrdi arg1 arg3 8 16 "arg1 contains the disposition (two bits)")
+    (LWA arg2 4 (isp) "Get the number of args")
+    (ADDI isp isp -8 "Pop stack")
+    ;(clrldi arg2 arg2 32)			;no need, the number is positive
+    (sldi arg2 arg2 3)
+    (ADDI arg2 arg2 8 "Add 1 and convert to stacked word address")
+    (B finishcallmerge))
+
+
+(comment "Function entry.")
+
+;; |DoEntryRestNotAccepted| is in IFUNCOM1.PPCS
+
+(define-instruction |DoEntryRestAccepted| :entry-instruction ()
+    (srdi t2 arg5 27 "Get the cr.trace-pending bit")
+    (ANDI-DOT t1 arg5 #xFF "The supplied args")
+    (ANDI-DOT R31 t2 1 "BLBS")
+    (BC 4 2 TraceTrap)
+    (b-apply-argument-supplied applysuppra t2 t3 t4 arg5)
+    (SUBF t2 arg2 t1 "t2=supplied-minimum")
+    (branch-if-less-than-zero t2 retryeratoofew "B. if too few args.")
+    (SUBF arg1 t1 arg4 "maximum-supplied")
+    (branch-if-less-than-zero arg1 retryerarest "B. rest args.")
+    (enter-function t2  t3 t4)			;doesn't return
+  (label applysuppra)
+    (SUBF arg1 t1 arg4 "maximum-supplied")
+    (branch-if-less-than-zero arg1 retryerarest "B. rest args.")
+    (branch-if-greater-than-zero arg1 |PullApplyArgs| "try pulling from applied args.")
+    (stack-set-cdr-code iSP 1 t6)		;CDR-NIL
+    (SUBF t2 arg2 t1 "t2=supplied-minimum")
+    (ADDI t2 t2 1)
+    (enter-function t2  t3 t4)			;doesn't return
+  (label retryeratoofew)
+    (illegal-operand too-few-arguments)
+  (label retryerarest)
+    (push-apply-args arg2 arg4  t1 t2 t3 arg5))	;calls ENTER-FUNCTION and doesn't return
+
+#-list-inline
+;; --- All the temps aren't really arguments, but they are smashed
+(define-subroutine |CarCdrInternal|
+		   (t1 t2 arg5 arg6 arg2 t5 t6 t7 t8 t9 t10 t11 t12)
+		   (r0)
+  (using-multiple-memory-reads (t9 t10 t11 t12)
+    (carcdr-internal t1 t2 arg5 arg6 set-to-cdr-push-car arg2 t5 t6 t7 t8)))
+
+(align4kskip4k)
+
+;; It might be slow, but not as slow as trapping out to Lisp!
+;; ARG1 contains the number of args to pull
+;; Rest argument is on the top of the stack
+(define-procedure |PullApplyArgsSlowly| ()
+    (with-multiple-memory-reads (t9 t10 t11 t12)
+      (pull-apply-args-slowly arg1  arg2 arg3 arg4 arg5 arg6 t1 t2 t3 t4 t5 t6)))
+
+(define-instruction |DoLocateLocals| :operand-from-stack ()
+    (get-control-register t1 "The control register")
+    (mov iLP iSP)
+    (SUBF t3 iFP iLP "arg size including the fudge 2")
+    (srdi t3 t3 3 "adjust arg size to words")
+    (ANDI-DOT t2 t1 #xFF "argument size")
+    (ADDI t2 t2 -2 "corrected arg size")
+    (clrrdi t1 t1 8 "Clear low order 8 bits")
+    (OR t1 t1 t3 "replace the arg size")
+    (stack-push-fixnum t2 t4)
+    (set-control-register t1)
+    (ContinueToNextInstruction))
+
+(comment "Returning.")
+
+;; |DoReturnSingle| is in IFUNCOM1.PPCS
+
+;; Register conventions for return-multiple instruction:
+;;   arg1 is number of values
+;;   arg2 is the pop(0)/immediate(1) flag
+;; These are shared with return conventions for effect and value cases
+;;   arg3 is the return value (with cdr already cleared)
+;;   arg4 is the disposition dispatch
+;;   arg5 is the control register
+;;   arg6 is stack-cache-data (for underflow check)
+
+;; Return completes by branching to StackCacheUnderflowCheck which goes
+;; to NextInstruction after dealing with underflow.  In the for-return
+;; case, this re-executes the instruction one frame up.  ---
+;; Return-multiple is only ever called in immediate or sp-pop mode, make
+;; a custom entry that takes advantage of that
+(define-instruction |DoReturnMultiple| :operand-from-stack (:own-immediate t)
+    ;; Here we know we were called with sp|pop
+    (LWA t1 0 (arg1) "Fetch the tag for type-check")
+    (LWA arg1 4 (arg1) "Fetch the data")
+    (CheckDataType t1 |TypeFixnum| returnmultipleio t2)
+    (clrldi arg1 arg1 32 "Discard dtp-fixnum tag word")
+  (label returnmultipletop)
+    (get-control-register arg5)
+    (load-constant t3 #.(* 3 1_18) "value disposition mask")
+    (ADDI t2 iSP 8)
+    (sldi t1 arg1 3 "Value bytes")
+    (AND t3 t3 arg5 "Mask")
+    (srdi t3 t3 18 "Shift disposition bits into place.")
+    (SUBF arg3 t1 t2 "Compute position of value(s)")
+    (LD arg6 PROCESSORSTATE_STACKCACHEDATA (ivory))
+    (ADDI arg4 t3 -2 "arg4 -2=effect -1=value 0=return 1=multiple")
+    (branch-if-less-than-zero arg4 returnmultiplesingle)
+    (abandon-frame-simple (not arg4) arg5 HandleFrameCleanup  t1 t2 t3 t4 t5 t6 t7)
+    ;;+++ check for frame overflow here before copying in values
+    (ADDI t4 iSP 8 "Compute destination of copy")
+    (mov t3 arg1 "Values")
+    (stack-block-copy arg3 t4 t3 t nil t1 t2)
+    (sldi t2 arg1 3)
+    (ADD iSP t2 iSP "Adjust iSP over returned values")
+    (comment "arg4 -2=effect -1=value 0=return 1=multiple")
+    (branch-if-zero arg4 returnmultiplereturn)
+  (label returnmultiplemultiple)
+    (stack-push-fixnum arg1 t1 "push the MV return count")
+  (label returnmultipledone)
+    (CMPL 0 1 iFP arg6 "stack-cache underflow")
+    (BC 12 0 returnmultipleunderflow)
+    (mov arg2 t7)
+    (branch-if-nonzero t7 InterpretInstructionPredicted)
+    ;; PC was loaded if arg4 /= 0
+    (branch-if-nonzero arg4 interpretInstructionForBranch)
+    (ContinueToInterpretInstruction "Return-multiple done")
+  (label returnmultipleunderflow)
+    (external-branch |StackCacheUnderflowCheck|)
+
+    ;; Here for the cases that do not preserve multiple values (effect, value)
+    ;; fetch the first value (or NIL if there are no values)
+  (label returnmultiplesingle)
+    (stack-read arg3 arg3)
+    (get-nil t1)
+    (clrldi arg3 arg3 #.(- 64 38) "Clear cdr")
+    (CMPI 0 1 arg1 0)
+    (BC 4 2 skip8 "B.NE")
+    (mov arg3 t1)
+   (unlikely-label skip8)
+    (B returncommontail)
+
+  (label returnmultiplereturn)
+    ;; If this was SP|POP, must push that back before retry
+    (branch-true arg2 returnmultipledone)
+    (stack-push-ir |TypeFixnum| arg1 t1)
+    (B returnmultipledone)
+
+  (immediate-handler |DoReturnMultiple|)  
+    (mov arg1 arg2)
+    ;; Not SP|POP
+    (load-constant arg2 1 "arg2 = (not sp|pop)")
+    (B returnmultipletop)
+
+  (label returnmultipleio)
+    (illegal-operand one-operand-fixnum-type-error))
+
+(define-procedure handleframecleanup ()
+    (LD iSP PROCESSORSTATE_RESTARTSP (ivory) "Restore SP to instruction start")
+    (get-control-register arg5 "Get control register")
+    (cleanup-frame arg5 InterpretInstruction t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 t12)
+    (ContinueToInterpretInstruction "Retry the instruction"))
+
+(define-procedure |StackCacheUnderflowCheck| ()
+    ;; iCP may not be valid yet, so we continue through
+    ;; InterpretInstructionForBranch, which will validate it
+    (stack-cache-underflow-check iFP InterpretInstructionForBranch |StackCacheUnderflow| t1 t2 t3 t4))
+
+;; FROM, TO, and COUNT must be in T1, T2, and T3
+(define-fast-subroutine |StackCacheUnderflow| () (r0)
+    (stack-cache-underflow-body t1 t2 t3  t4 t5 t6 t7))
+
+(define-procedure |StackCacheOverflowHandler| (iSP arg2)
+  ;; arg2 is nwords beyond iSP needed
+  (stack-cache-overflow-handler t1 t2 t3 t4 t5))
+
+(define-instruction |DoReturnKludge| :operand-from-stack (:own-immediate t)
+    (stack-read2 arg1 t1 arg2 :signed t)
+    (CheckDataType t1 |TypeFixnum| returnkludgeio t2)
+    (clrldi arg2 arg2 32)
+  (immediate-handler |DoReturnKludge|)
+    (LD arg6 PROCESSORSTATE_STACKCACHEDATA (ivory))
+    (sldi t1 arg2 3)
+    (ADDI t1 t1 -8 "t1:=arg2*8-8")
+    (get-control-register t2)
+    (SUBF t1 t1 iSP "t1 is the values block")
+    (abandon-frame-simple t t2 returnkludgecleanup t3 t4 t5 t6 t7 t8 t9)
+    (branch-if-zero arg2 rkloopdone)
+  (label rklooptop)
+    (stack-read t1 t4 "Read a 40 bit word from the values block")
+    (ADDI arg2 arg2 -1)
+    (stack-write-disp iSP 8 t4 "Push value onto stack cdr codes and all")
+    (ADDI t1 t1 8)
+    (ADDI iSP iSP 8)
+    (branch-if-greater-than-zero arg2 rklooptop)
+  (label rkloopdone)
+    (CMPL 0 1 iFP arg6 "stack-cache underflow")
+    (BC 12 0 returnkludgeunderflow)
+    (branch-if-zero t9 interpretInstructionForBranch "No prediction, validate cache")
+    ;; Duplicate code from (label interpretInstructionPredicted)
+    (mov iCP t9)
+    (ContinueToInterpretInstruction)
+
+  (label returnkludgeio)
+    (illegal-operand one-operand-fixnum-type-error)
+  (label returnkludgecleanup)
+    (external-branch handleframecleanup)
+  (label returnkludgeunderflow)
+    (external-branch |StackCacheUnderflowCheck|))
+
+;;+++ Should signal TAKE-VALUES-TYPE-ERROR if args are not fixnums
+(define-instruction |DoTakeValues| :operand-from-stack-immediate ()
+    (Get-NIL arg6)
+    (clrldi arg1 arg1 32 "Number of values expected")
+    (stack-pop2 arg3 arg4 "Number of values provided")	;+++ only arg4 needed
+    (SUBF arg2 arg4 arg1)
+    (branch-if-less-than-zero arg2 takevalueslose "J. if too many args supplied")
+    (branch-if-greater-than-zero arg2 takevaluespad "J. if too few values supplied")
+    (ContinueToNextInstruction)
+  (label takevalueslose)
+    (sldi t4 arg2 3)
+    (ADD iSP t4 iSP "Remove the unwanted values")	;arg2 is -ve
+    (ContinueToNextInstruction)
+  (label takevaluespad)
+    (stack-cache-overflow-check t1 t2 t3 t4 t5 iSP arg2)
+  (label takevaluespadloop)
+    (stack-push-with-cdr arg6 "Push NIL")
+    (ADDI arg2 arg2 -1)
+    (branch-if-greater-than-zero arg2 takevaluespadloop)
+    (ContinueToNextInstruction))
+
+
+(comment "Catch Instructions")
+
+(define-instruction |DoCatchOpen| :10-bit-immediate ()
+    (ANDI-DOT t10 arg1 1 "t10=1 if unwind-protect, t10=0 if catch")
+    (LWA t3 PROCESSORSTATE_CATCHBLOCK (ivory) "tag")
+    (sldi t10 t10 #.(+ 6 32))
+    (LWA t4 PROCESSORSTATE_CATCHBLOCK+4 (ivory) "data")
+    (LD t2 PROCESSORSTATE_BINDINGSTACKPOINTER (ivory))
+    (SCAtoVMA iSP t9 t1)
+    (OR t1 t10 t2)
+    (stack-push-with-cdr t1)
+    (get-control-register t11)
+    (srdi t2 t11 #.(- 26 6) "Get old cleanup catch bit")
+    (ANDI-DOT t2 t2 #x40)
+    (srdi t1 t11 #.(- 8 7) "Get old extra arg bit")
+    (ANDI-DOT t1 t1 #x80)
+    (OR t1 t1 t2)
+    (TagType t3 t2)				;+++ will never be a cdr code?
+    (OR t1 t1 t2 "T1 now has new tag")
+    (stack-push2-with-cdr t1 t4)
+    (branch-if-nonzero t10 catchopen2)
+    (get-continuation2 t1 t2)
+    (TagType t1 t1)
+    (ANDI-DOT t3 arg1 #xC0 "T3 has the disposition bits in place")
+    (OR t1 t1 t3)
+    (stack-push2-with-cdr t1 t2)
+  (label catchopen2)
+    (li t1 |TypeLocative|)
+    (STW t1 PROCESSORSTATE_CATCHBLOCK (ivory) "tag")
+    (STW t9 PROCESSORSTATE_CATCHBLOCK+4 (ivory) "data")
+    (load-constant t1 #.1_26 "cr.cleanup-catch")
+    (OR t1 t1 t11 "set it")
+    (set-control-register t1)
+    (ContinueToNextInstruction))
+
+(define-instruction |DoCatchClose| :operand-from-stack ()
+    (LWA t1 PROCESSORSTATE_CATCHBLOCK+4 (ivory) "data")
+    (clrldi t1 t1 32)
+    (VMAtoSCA t1 t10 t3)			;t10 is now an SCA
+    (stack-read2-disp t10 8 arg3 arg4 "bstag bsdata")
+    (LD t4 PROCESSORSTATE_BINDINGSTACKPOINTER (ivory))
+    (stack-read2-disp t10 16 arg5 arg6 "prtag prdata")
+    (srdi t3 t4 32)
+    (CMPL 0 0 t4 arg4 "32-bit compare (signed/unsigned irrelevant)")
+    (BC 12 2 catchcloseld)
+    (CheckDataType t3 |TypeLocative| catchclosedbt t1)
+  (label catchcloselt)
+    (unbind t1 t2 t3 t4 t5 t6 t7 t8 t9 arg1 arg2 t11)	;t1 gets new BSP
+    (CMPL 0 0 t1 arg4 "32-bit compare (signed/unsigned irrelevant)")
+    (BC 4 2 catchcloselt)
+    ;; After we've unbound everything, check for a preempt request
+    (check-preempt-request nil t3 t4)
+  (label catchcloseld)
+    (TagType arg5 t1)
+    (STW t1 PROCESSORSTATE_CATCHBLOCK (ivory) "tag")
+    (ANDI-DOT t2 arg5 #x80 "extra argument bit")
+    (LD t6 PROCESSORSTATE_EXTRAANDCATCH (ivory) "mask for two bits")
+    (sldi t2 t2 1 "position in place for control register.")
+    (STW arg6 PROCESSORSTATE_CATCHBLOCK+4 (ivory) "data")
+    (ANDI-DOT t3 arg5 #x40 "cleanup catch bit")
+    (sldi t3 t3 #.(- 26 6) "position in place for cr")
+    (get-control-register t4)
+    (OR t5 t2 t3 "coalesce the two bits")
+    (ANDC t4 t4 t6 "Turn off extra-arg and cleanup-catch")
+    (OR t4 t4 t5 "Maybe turn them back on")
+    (set-control-register t4)
+    (ANDI-DOT t6 arg3 #x40 "uwp bit")
+    (branch-if-zero t6 NextInstruction)
+    (comment "Handle unwind-protect cleanup here")
+    (stack-read2 t10 arg1 arg2 "pctag pcdata")
+    (srdi t8 t4 #.(- 23 6) "Cleanup in progress bit into cdr code pos")
+    ;; Get the next PC
+    (ADDI t7 iPC 1 "Next PC")
+    (convert-pc-to-continuation t7 t8 t10 t1)
+    (TagType t8 t7)			
+    (ANDI-DOT t8 t8 #x40)
+    (load-constant t9 #.1_23 "cr.cleanup-in-progress")
+    (ORI t8 t8 #x80)
+    (OR t7 t7 t8)
+    (stack-push2-with-cdr t7 t10)
+    (OR t4 t4 t9 "set cr.cleanup-in-progress")
+    (set-control-register t4)
+    (convert-continuation-to-pc arg1 arg2 iPC t1)	
+    (B InterpretInstructionForJump)
+  (label catchclosedbt)
+    (external-branch DBUNWINDCATCHTRAP))
+
+(comment "Fin.")

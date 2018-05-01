@@ -1,0 +1,150 @@
+
+D,#TD1PsT[Begin using 006 escapes](1 0 (NIL 0) (NIL :BOLD NIL) "CPTFONTCB")            Virtual Lisp Machine project schedule (preliminary)
+                         ** Company Confidential **
+
+
+(2 0 (NIL 0) (NIL :ITALIC NIL) "CPTFONTI")! = important milestone, must be met at or near the specified date
+* = date at risk due to possible hard-to-foresee difficulties
+n = new or revised milestone
+
+Task                                          Completion  Personnel0     2Status
+                                                 date
+
+0Get VLM debugger for C-emulator working       11/13/92    Judy          Done 11/13
+
+Get C-emulator working again to verify        11/13/92    Judy          Done 11/13
+ that the VLM debugger works
+
+Get C-based emulator working on Beta          11/20/92    PTW           Done 12/2
+
+Run Boyer benchmark on C-emulator on Beta,    11/20/92    PTW           Done 12/9
+ and get benchmark numbers
+
+Run experiments to determine that mmap        11/20/92    Judy,PTW      Done 12/1
+ and munmap will satisfy our needs for the
+ emulator storage system
+
+Glue VLM debugger to asm-emulator             11/23/92    Judy          Done 12/1
+
+Get KHS instruction tests to run to           11/25/92    PTW           Done 12/4
+ completion on C-based emulator (doesn't
+ have to pass completely)
+
+Get initial asm-emulator running on Beta,     11/25/92    Paul          Punted 12/7
+ and get initial benchmarks for instruction
+ decoding and a few basic instructions (TAK)
+
+Get console life support working              11/25/92    Judy          Done 12/8
+
+Life support core working                     11/25/92    Gary          Done 12/8
+
+Get disk life support working                 12/02/92    Gary          Done 12/14
+
+"Hello world" on Beta			      12/04/92    Gary,Judy     Done 12/9
+
+Start bring up IFep under C-emulator          12/04/92    PTW,Judy,Gary Done 12/9
+ to debug console and disk life support
+
+Asm-emulator runs Boyer benchmark             12/11/93!   Paul          Done 12/18 (~XL800)
+
+IFep mostly works under C-emulator            12/11/93!   Judy,Gary     Done 1/5
+
+Research and experimentation on using         12/25/92    PTW           Done 12/7
+ native memory management to do PHT
+ (using C-emulator as the testbed)
+
+Bring up Minima under C-emulator              01/01/93    PTW,Gary      Punted 1/5
+ to debug network life support
+ (acceptable if no GC)
+
+Bring up IFEP under asm-emulator              01/05/93!   Gary,PTW,SWM  Done 2/1
+
+Start investigations on removing              01/15/93    SWM           Done 1/15
+ unnecessary bottlenecks from the sheet
+ window system, by calling into X at
+ a higher level
+
+New machine type, file type, and world        01/15/93    Bob,SWM       Done 2/2
+ load type for the VLM; SCT support
+
+Investigate alternative world load            01/29/93    Gary          Done 1/29
+ format to improve performance of booting
+ and paging from world load (this requires
+ doing "world tools" in C)
+
+Unix-style command interface to start         02/05/93n    Gary
+ up the VLM (takes arguments that augment
+ data gotten from any config files)
+
+Asm-emulator passes most instruction tests    02/12/93n   PTW,SWM       Done 2/26
+
+Bring up Minima under asm-emulator            02/12/93!n  Gary,PTW,SWM  Done 2/26
+ (acceptable if no GC)
+
+Get network life support working              02/19/93*   Tenny,Gary    Done 3/5
+
+Convert IFEP debugger into IFEP kernel        02/19/93n   Eric,Gary     Done 3/19
+
+Start designing, implementing RPC so          02/19/93    Tenny,Gary
+ that users can call out to OSF-1
+
+Fix Genera Memory Management to use           02/26/93*n  PTW
+native Alpha Memory Management
+
+Genera sources conditionalized for VLM        02/19/93    Bob,SWM
+ machine type in order to eliminate all
+ code not needed by the VLM
+
+Genera hobbles along under asm-emulator       02/26/93!n  Gary,PTW
+ (using native PHT, but acceptable if no GC)
+
+Emulator passes all instruction tests,        02/26/93n   PTW,SWM       Done 3/5
+ including all traps
+
+Genera works reasonably well                  03/19/93n   Everyone
+ (GC starting to work with native PHT)
+
+Alternative world load format installed,      03/19/93    Gary
+ if investigations are successful
+
+Asm-interpreter substantially tuned           03/29/93n   Paul
+             
+Genera's sheet window system now calls        03/29/93*n  SWM,Bob
+ into X windows at a higher level
+
+Genera's sheet window system now calls        03/29/93*n  SWM,Bob
+ into X Windows via an embedded channel
+
+Documentation effort under way                04/02/93    (Doc)
+
+Kit design under way                          04/02/93    Carl
+
+Draft Alpha, QA, and Beta Plans written       04/09/93n   Watkins
+
+Basic RPC support implemented                 04/09/93n   Tenny,Gary
+
+LMFS/DBFS w/o FEPFS + Host file channel       04/09/93n   Gary
+
+Genera works well, including GC               04/26/93!*n Everyone
+
+Translator written, interfaced to asm         04/26/93n   Paul
+interpreter
+
+In-house Alpha testing and QA started         04/26/93n   (QA)
+
+Continue doing performance work               04/30/93    Everyone
+ - tune emulator, extend implementation                   - Paul
+   to do more before trapping out
+ - tune memory management, paging, and GC                 - PTW
+ - tune disk and network life support                     - Gary,Tenny
+ - identify Genera translation targets                    - Paul,Bob
+
+Benchmarks translated and run                 05/07/93n   Bob
+
+Genera 8.4 Feature Freeze                     05/07/93n   
+
+Beta1 software ships                          05/28/93!
+
+Genera 8.4 Final Freeze                       07/16/93n
+
+FCS                                           08/27/93!

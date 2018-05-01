@@ -1,0 +1,347 @@
+/* --- float1 --- */
+
+#define LDS(rn, r, s) r = s
+#define LDT(rn, r, s) r = s
+#define STS(d, rn, r) *d = r
+#define STT(d, rn, r) *d = r
+
+
+#define CVTLQ(dr, d, s1, sr2, s2) d = _CVTLQ(s1, s2)
+#define CVTQL(dr, d, s1, sr2, s2) d = _CVTQL(s1, s2)
+#define CVTQLV(dr, d, s1, sr2, s2) d = _CVTQL(s1, s2)
+#define CVTQS(dr, d, s1, sr2, s2) d = _CVTQS(s1, s2)
+#define CVTQT(dr, d, s1, sr2, s2) d = _CVTQT(s1, s2)
+#define CVTTQ(dr, d, s1, sr2, s2) d = _CVTTQ(s1, s2)
+#define CVTTQV(dr, d, s1, sr2, s2) d = _CVTTQ(s1, s2)
+#define CVTTQVC(dr, d, s1, sr2, s2) d = _CVTTQ(s1, s2)
+#define CVTTQVM(dr, d, s1, sr2, s2) d = _CVTTQVM(s1, s2)
+#define CVTTQSVI(dr, d, s1, sr2, s2) d = _CVTTQ(s1, s2)
+#define CVTTS(dr, d, s1, sr2, s2) d = _CVTTS(s1, s2)
+
+#define CPYSN(dr, d, sr1, s1, sr2, s2) d = _CPYSN(s1, s2)
+
+inline u64 _CVTLQ(u64 v1, u64 v2)
+{
+//  return (s32)(v2 & 0xffffffffL);
+  return (int)v2;
+}
+
+inline u64 _CVTQLV(u64 v1, u64 v2)
+{
+  u64 l;
+  l = (int)v2;
+  return l;
+}
+
+inline u64 _CVTQS(u64 v1, u64 v2)
+{
+  union {
+    float f;
+    long l;
+  } u;
+  u.f = (s64)v2;
+  return u.l;
+}
+
+inline u64 _CVTQT(u64 v1, u64 v2)
+{
+  union {
+    double d;
+    u64 l;
+  } u;
+  u.d = (s64)v2;
+  return u.l;
+}
+
+inline u64 _CVTQL(u64 v1, u64 v2)
+{
+  u64 l;
+  l = (int)v2;
+  return l;
+}
+
+inline u64 _CVTTQVC(u64 v1, u64 v2)
+{
+  union {
+    double d;
+    u64 l;
+  } u;
+  u.l = v2;
+  return (u64)u.d;
+}
+
+inline u64 _CVTTQVM(u64 v1, u64 v2)
+{
+  union {
+    double d;
+    u64 l;
+  } u;
+  u.l = v2;
+  //  printf("CVTTQVM: %g %d\n", u.d, (int)trunc(u.d));
+  //  return (int)trunc(u.d);
+if (u.d < 0.0) u.d -= 0.5;
+//if (u.d > 0.0) u.d += 0.5;
+  printf("CVTTQVM: %g %d\n", u.d, (int)u.d);
+  return (int)u.d;
+}
+
+inline u64 _CVTTQSVI(u64 v1, u64 v2)
+{
+  union {
+    double d;
+    long l;
+  } u;
+  u.l = v2;
+  return (u64)u.d;
+}
+
+inline u64 _CVTTQ(u64 v1, u64 v2)
+{
+  union {
+    double d;
+    long l;
+  } u;
+  u.l = v2;
+  return (u64)u.d;
+}
+
+inline u64 _CVTTQV(u64 v1, u64 v2)
+{
+  union {
+    double d;
+    long l;
+  } u;
+  u.l = v2;
+  return (u64)u.d;
+}
+
+inline u64 _CVTTS(u64 v1, u64 v2)
+{
+  union {
+    double d;
+    long l;
+  } u;
+  union {
+    float f;
+    int i;
+  } u2;
+
+  u.l = v2;
+  u2.f = u.d;
+
+  return (u64)u2.i;
+}
+
+inline u64 _CPYSN(u64 a, u64 b)
+{
+  union {
+    double d;
+    long l;
+  } u1, u2;
+  double signbit = -1.0;
+  u1.l = a;
+  u2.l = b;
+  printf("CPYSN: %g %g ", u1.d, u2.d);
+  if (u1.d <= 0.0)
+    signbit = 1.0;
+  if (u2.d < 0.0)
+    u2.d = -u2.d;
+  u2.d *= signbit;
+  printf(" -> %g\n", u2.d);
+  return u2.l;
+}
+
+inline u64 fixsfloat(u64 v)
+{
+  union {
+    double d;
+    long l;
+  } u;
+  union {
+    float f;
+    int i;
+    long l;
+  } u2;
+
+  if ((v >> 32) == 0)
+     return v;
+
+  u.l = v;
+  u2.l = 0;
+  u2.f = u.d;
+
+  return (u64)u2.l;
+}
+
+inline u64 fixtfloat(u64 v)
+{
+  union {
+    double d;
+    long l;
+  } u;
+  union {
+    float f;
+    int i;
+    long l;
+  } u2;
+
+  if ((v >> 32) != 0)
+     return v;
+
+  u2.l = v;
+  u.d = u2.f;
+
+  return (u64)u.l;
+}
+
+#define ADDS(dr, d, sr1, s1, sr2, s2) d = _ADDS(s1, s2)
+#define ADDT(dr, d, sr1, s1, sr2, s2) d = _ADDT(s1, s2)
+#define SUBS(dr, d, sr1, s1, sr2, s2) d = _SUBS(s1, s2)
+#define SUBT(dr, d, sr1, s1, sr2, s2) d = _SUBT(s1, s2)
+#define MULS(dr, d, sr1, s1, sr2, s2) d = _MULS(s1, s2)
+#define MULT(dr, d, sr1, s1, sr2, s2) d = _MULT(s1, s2)
+#define DIVS(dr, d, sr1, s1, sr2, s2) d = _DIVS(s1, s2)
+#define DIVT(dr, d, sr1, s1, sr2, s2) d = _DIVT(s1, s2)
+
+
+inline u64 _ADDS(u64 a, u64 b)
+{
+  union {
+    float f;
+    u64 l;
+  } u1, u2;
+  u1.l = fixsfloat(a);
+  u2.l = fixsfloat(b);
+  printf("ADDS: %p %p\n", a, b);
+  printf("ADDS: %g %g %g\n", u1.f, u2.f, u1.f + u2.f);
+  u1.f = u1.f + u2.f;
+  return u1.l;
+}
+
+inline u64 _ADDT(u64 a, u64 b)
+{
+  union {
+    double d;
+    u64 l;
+  } u1, u2;
+  u1.l = a;
+  u2.l = b;
+  printf("ADDT: %p %p\n", a, b);
+  printf("ADDT: %g %g %g\n", u1.d, u2.d, u1.d + u2.d);
+  u1.d = u1.d + u2.d;
+  return u1.l;
+}
+
+inline u64 _SUBS(u64 a, u64 b)
+{
+  union {
+    float f;
+    u64 l;
+  } u1, u2;
+
+  u1.l = fixsfloat(a);
+  u2.l = fixsfloat(b);
+
+  //  printf("SUBS: %p %p\n", a, b);
+  //  printf("SUBS: %g %g %g\n", u1.f, u2.f, u1.f - u2.f);
+  u1.f = u1.f - u2.f;
+  return u1.l;
+}
+
+inline u64 _SUBT(u64 a, u64 b)
+{
+  union {
+    double d;
+    u64 l;
+  } u1, u2;
+  u1.l = a;
+  u2.l = b;
+  u1.d = u1.d - u2.d;
+  return u1.l;
+}
+
+inline u64 _MULS(u64 a, u64 b)
+{
+  union {
+    float f;
+    u64 l;
+  } u1, u2;
+  u1.l = fixsfloat(a);
+  u2.l = fixsfloat(b);
+  //  printf("MULS: %p %p -> %p %p\n", a, b, u1.l, u2.l);
+  //  printf("MULS: %g %g %g\n", u1.f, u2.f, u1.f * u2.f);
+  u1.f = u1.f * u2.f;
+  return u1.l;
+}
+
+inline u64 _MULT(u64 a, u64 b)
+{
+  union {
+    double d;
+    u64 l;
+  } u1, u2;
+  u1.l = a;
+  u2.l = b;
+  u1.d = u1.d * u2.d;
+  return u1.l;
+}
+
+inline u64 _DIVS(u64 a, u64 b)
+{
+  union {
+    float f;
+    u64 l;
+  } u1, u2;
+  u1.l = fixsfloat(a);
+  u2.l = fixsfloat(b);
+  printf("DIVS: %p %p\n", a, b);
+  printf("DIVS: %g %g %g\n", u1.f, u2.f, u1.f / u2.f);
+  u1.f = u1.f / u2.f;
+  return u1.l;
+}
+
+inline u64 _DIVT(u64 a, u64 b)
+{
+  union {
+    double d;
+    u64 l;
+  } u1, u2;
+  u1.l = a;
+  u2.l = b;
+  u1.d = u1.d / u2.d;
+  return u1.l;
+}
+
+#define FLTU64(rv, v) _FLTU64(v)
+
+inline double _FLTU64(u64 v)
+{
+  union {
+    double d;
+    u64 l;
+  } u;
+  u.l = fixtfloat(v);
+  //  u.l = v;
+  return u.d;
+}
+
+inline u64 U64FLTT(double v)
+{
+  union {
+    double d;
+    u64 l;
+  } u;
+  u.d = v;
+  return u.l;
+}
+
+inline u64 U64FLTS(float v)
+{
+  union {
+    float f;
+    u64 l;
+  } u;
+  u.l = 0;
+  u.f = v;
+  return u.l;
+}

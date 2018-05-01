@@ -1,0 +1,241 @@
+Date: Tue, 9 Feb 1993 16:48 EST
+From: John Dustin <jsd@zk3.dec>
+To: tenny@symbolics
+Subject: 64-bit porting guide
+cc: jsd@zk3.dec
+
+								Vers: 1/14/92
+									afd
+
+			64-bit "clean" Guidelines
+			=========================
+
+By paying careful attention to data types you can make your code work
+on both 32 bit and 64 bit systems.
+
+C compiler data types and bit sizes are as follows:
+
+			Mips 32 bit	Alpha 64 bit
+	C type		Data Size	Data Size
+	======		=========	============
+
+	short		16 bits		16 bits
+
+	int		32 bits		32 bits
+
+	long		32 bits		64 bits
+
+	* (ptr)		32 bits		64 bits
+
+	long long	64 bits		64 bits		(coming in the future)
+
+
+Declare any variable that you want to be 32 bits in size, as an "int",
+not a "long".  That way it will be 32 bits in size on both 32-bit mips
+systems and 64-bit Alpha systems.
+
+If a variable should be 32 bits in size on a 32-bit mips system and
+64 bits in size on a 64-bit Alpha system, then declare it as a "long".
+
+Watch out for arguments to functions where the argument is not
+explicitly declared (and typed).  You should explicitly declare the
+formal parameters to routines or their sizes may not match up with the
+caller (default is "int" which truncates 64-bit addresses).
+
+Remember that "register var" and "unsigned var" default to "int" (32-bits).
+
+Look at any variable declared "int".  It may be used to hold an address!
+Sizeof (int) does not equal sizeof (char *) on Alpha.
+
+Look at any variable declared "long".  If it must be 32 bits, then you
+have to change its type to "int".
+
+Constants are 32-bit quantities by default.  Shift operations or bit
+operations on constants will give 32-bit results.  If you want a 64-bit
+result you must follow the const with an "L", otherwise you get a
+32-bit result.  For example:
+
+	long foo, bar;
+	foo = 1L << bar;
+
+Using a "0" where you should use "NULL" means that you get a 32-bit const.
+On alpha that could mean 0 in the low 32 bits and garbage in the high 32 bits.
+Using "NULL" from stdio.h will get the correct value for mips and alpha.
+
+Modifying a "char" is NOT atomic on Alpha.  You will get a load of 32
+or 64 bits and then byte operations to extract, mask, and shift the
+byte, followed by a store of 32 or 64 bits.
+
+Bitfields declared as "int" on Alpha  generate load/store long (32 bits)
+Bitfields declared as "long" on Alpha generate load/store quad (64 bits)
+
+Printf formats: %d and %x will print 32 bits worth of data.
+Use %ld and %lx to get 64 bits.
+
+			
+			Kernel Code and Drivers
+			=======================
+
+Wherever there was a wbflush() call in mips code, you need an mb()
+call in Alpha code.  The "mb" stands for memory barrier.
+
+An mb() is occasionally needed even where a wbflush() was not needed.
+In general, a memory barrier causes loads/stores to be serialized 
+(not out-of-order), empties memory pipelines and write buffers, and
+assures that the data cache is coherent:
+
+    The mb() call should be used to synchronize DMA buffers.  Use it
+    before the host releases the buffer to the driver and before the
+    host access a buffer filled by the driver.
+
+    Alpha does not guarantee to preserve write ordering, so memory
+    barriers are required between multiple writes to I/O registers
+    where order is important.
+
+    The same is true for read ordering also.
+
+    Use the memory barrier to prevent writes from being collapsed in the
+    write buffer.  That is, to prevent bytes/shorts/ints from being merged
+    into one write.
+
+    Whenever a cache flush is done, an mb() must precede and follow the
+    cache flush.
+
+
+
+------- End of Forwarded Message
+
+	 
+	
+		MORE 64-BIT PORTING HINTS
+
+The following hints are intended to serve as a reminder of some of the
+more glaring non-portable programming practices.
+
+When porting from a 32-bit architecture to a 64-bit architecture, the main
+thrust of the effort centers around cleaning up non-portable programming
+assumptions.  In some cases, it means doing away with just plain sloppy code.
+In others, the original authors may have "done the right thing" at the time
+that the code was developed, but the new architecture may necessitate taking
+new approaches.
+
+A typical approach involves the following steps:
+
+
+1) Grep for "long".  Variables declared long are more likely to
+   cause problems elsewhere in the code.
+
+2) Run "grep" to locate "%d", "%s", and similar arguments to
+   printf() statements where coders have mixed ints and longs.
+   Note that "%D" should be changed to "%ld".
+
+3) Grep for "fseek" and "lseek" statements that have hard-wired
+   constants or inappropriate types.  More about this later.
+
+4) Run lint to catch a treasure trove of incompatible casts and
+   other portability glitches.  It's a good idea to run lint on
+   multiple source files at once instead of individual files.
+
+
+And now for the list of gotchas...
+
+===========================================================================
+* MIXING POINTERS AND INTS
+
+- Function calls which pass ints to functions expecting pointers
+- Implicit casts of function call return values
+
+
+long n;
+
+n = foobar(100, 200);		/* WRONG */
+
+int foobar(first, last)
+  long first;
+  long last;
+{
+}
+
+
+===========================================================================
+* MIXING INTS AND LONGS
+
+long x, y;
+
+x = y & ~3;		/* WRONG */
+x = y & ~3L;		/* RIGHT */
+
+
+===========================================================================
+* EXPLICIT CASTS WHICH DIFFER FROM DECLARATIONS IN HEADERS
+
+char *foo;
+foo = (char *)malloc(n);	/* WRONG */
+
+You should include <stdlib.h> instead of assuming that malloc()
+returns a (char *) type.  In <stdlib.h>, malloc() currently
+returns (void *).  Note that the string functions are often
+declared incorrectly.
+
+===========================================================================
+* SEEK OFFSETS
+
+
+lseek(d, 0);		/* WRONG */
+lseek(d, 0L);		/* MARGINAL - MAY WORK NOW, BUT MIGHT NOT
+			   WORK IN THE FUTURE */
+
+off_t offset;
+lseek(d, offset);	/* RIGHT */
+
+lseek(d, (off_t)0)	/* RIGHT */
+
+===========================================================================
+* TRUNCATIONS AND EXTENSIONS
+
+int h;
+long l = 0x1ffffeefe;
+
+h = l;			/* WRONG */
+
+
+char c = 255;
+long j;
+
+j = c;			/* RIGHT */
+j = 255;		/* RIGHT */
+
+
+Also, note that bit fields are limited to 32 bit ints only.
+Anything greater than 32 bits may be truncated.  Similarly,
+switch constants are considered to be ints as well.
+
+
+===========================================================================
+* IMPROPER USE OF sizeof
+
+"sizeof" returns "size_t", which is an unsigned int.  This can
+cause problems when combining it in an expression which contains
+boths longs and ints.
+
+long x,y; (or char *x,*y;)
+
+x = y & ~(sizeof long - 1);             /* WRONG */
+x = (long)(y & ~(sizeof long - 1));     /* STILL WRONG */
+x = y & ~(sizeof long - 1L);            /* RIGHT */
+x = y & ~(long)(sizeof long - 1);       /* MORE RIGHT */
+
+
+===========================================================================
+* GENERAL CONSIDERATIONS
+
+- Whenever possible, avoid making code "64-bit specific".  Try
+  to make it scale to any architecture instead.
+
+- Watch the order of evaluation in expressions.
+
+- Pay special attention to byte ordering when mixing types.
+
+
+------- End of Forwarded Message
+

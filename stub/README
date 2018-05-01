@@ -1,0 +1,4 @@
+
+clisp process.lisp
+
+generates "xoutput" files; compare with makediff.sh

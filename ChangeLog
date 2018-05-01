@@ -1,0 +1,70 @@
+in 2013 disassembled Brad's genera to locate and fix the integer division
+	code. Located and binary patched it - integer division works ok.
+Oct 2014 eventually located the vlm source code and began to work on it.
+in 2014	changed stub/process.lisp to work with clisp
+	implemented rational division as "asm" operation in
+	alpha-emulator/imacmath.lisp and stub/process.lisp
+	implemented double-float trap as "c" code in
+	alpha-emulator/imactrap.lisp and stub/process.lisp
+	implemented networking using a tap interface for internet
+	as well as chaos in life-support/network-tap-linux.c.
+	floor/ceiling/round produce erroneous results - fixed them by
+	introducing new "pseudo" alpha-ops and generating code in
+	stub/process.lisp to make use of the libm-functions
+	floor, ceil, trunc, and rint functions.
+in 2015	implemented check for and workaround for X11 with xcb in
+	life-support/cold-load.c and life-support/console.c
+	changed keyboard detection code and key translation for
+	the cold-load/debugger window in life-support/cold-load.c
+	changed timing in life-support/signals.c and utilitites.c
+	implemented nfs version 3 client in LISP.
+	implemented a server for the "MINI" protocol in LISP,
+	patched qld and friends to be able to do a cold load
+	using two OG2 instances. Finally able to do a cold-load.
+	Still looking for the cold-load generator sources...
+	Implemented a few additions to the embedded communication
+	area (cwd, home dir), added block-size setting for FEP-disks,
+	added unix crypt as a callable routine. Did some changes to
+	gc routines to be able to gc even more areas. Succeeded in
+	saving worlds smaller then the original 8-5 world.
+Aug 2016 made a version of genera work on the alpha using the
+	original alpha-assembly generation, fixed some glitches
+	when shutting down genera (move termination of network in front
+	of all other termination routines). moved to the x64 version as well
+Oct 2016 added alpha assembly instruction in alpha-emulator/imactrap.lisp
+	to correctly identify double-float traps. Tested on alpha, then
+	also moved to the x64 version.
+Nov 2016 worked on the chaosnet network module for Linux 'til
+	Nov 2017
+Nov 2017 moved the source tree into an autoconf/automake project
+	fixed a lot of compilation warnings
+Feb 2018 cleaned up the sources
+	reverted useless code changes in emulator/interface.c
+04/21/18 added <dev>:MAC|aa:bb:cc:dd:ee:ff to network options on
+	request from Jean Marangos. This is an additional option for the
+	interface and is used for CHAOS as well as INTERNET interfaces. By
+	default the tap interface code will generate a new MAC address for
+	the OG2 end of the tap tunnel each time genera is started.
+04/24/18 developed a LISP patch to use the hosts time at startup instead
+	of asking around on the network
+04/26/18 added "host=address" option to network specifications, so a
+	network specification could now look like
+	"tap0:INTERNET|192.168.2.2;gateway=192.168.2.1;host=192.168.2.1",
+	for example or
+	"tap0:CHAOS|401;host=777". By default the tap interface code
+	assumes its host is ".1" on the guests subnet for ip, or "377" on the
+	guest subnet for chaos. Giving the "host=" option will override
+	this default, should you ever need it. I you give the host option
+	the address used should be the same address you've used when you
+	configured the tap interface.
+	added some of the LISP patches I use to the OG2-patches directory
+04/27/18 removed "while (1);" from vpunt() to allow termination after an
+	error
+04/28/18 use ucontext_t instead of struct ucontext in emulator/interfac.c
+	and emulator/memory.c as reported by Seth Morabito
+	added extern definitions for fixtfloat, _ADDS, _SUBS, _MULS, _DIVS
+	as those caused gcc hickups on Ubuntu reported by Seth Morabito
+	bumped version to vlm-0.99-1
+04/29/18 fixed a bug in life-support/disks.c where passing a negative
+	blocksize lead to non-logical blocksize settings
+	

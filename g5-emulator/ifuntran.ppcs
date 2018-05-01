@@ -1,0 +1,64 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+(define-procedure |NativeException| ()
+    (LD t1 PROCESSORSTATE_LINKAGE (Ivory) "Load linkage to escape block")
+    (LD r0 PROCESSORSTATE_RESUMEEMA (Ivory) "Re-load resumemulator")
+    (LD iSP PROCESSORSTATE_RESTARTSP (Ivory) "Restore SP (Just in case?)")
+    (stzd PROCESSORSTATE_LINKAGE (ivory))
+    (BCLR 20 0 "Escape"))
+
+;;; In Q3, get to top of Q4.
+
+(align4kSkip4k) ; Q3
+
+(define-procedure |PadPastAref1| ()
+    (LD t1 PROCESSORSTATE_LINKAGE (Ivory) "Load linkage to escape block")
+    (LD r0 PROCESSORSTATE_RESUMEEMA (Ivory) "Re-load resumemulator")
+    (LD iSP PROCESSORSTATE_RESTARTSP (Ivory) "Restore SP (Just in case?)")
+    (stzd PROCESSORSTATE_LINKAGE (ivory))
+    (LD t1 PROCESSORSTATE_LINKAGE (Ivory) "Load linkage to escape block")
+    (LD r0 PROCESSORSTATE_RESUMEEMA (Ivory) "Re-load resumemulator")
+    (LD iSP PROCESSORSTATE_RESTARTSP (Ivory) "Restore SP (Just in case?)")
+    (stzd PROCESSORSTATE_LINKAGE (ivory))
+    (BCLR 20 0 "Escape"))
+
+(define-subroutine |CarSubroutine|
+		   (arg5 arg6 arg2 t5 t6 t7 t8 t9 t10 t11 t12)
+		   (r0)
+  ;; --- make part of define-translator-subroutine
+  (STD r0 PROCESSORSTATE_LINKAGE (ivory))
+  (with-multiple-memory-reads (t9 t10 t11 t12)
+    (li r0 4)
+    (STD iSP PROCESSORSTATE_RESTARTSP (Ivory))
+    (call-subroutine |CarInternal|)
+    ;; --- make part of define-translator-subroutine
+    (stzd PROCESSORSTATE_LINKAGE (ivory))
+    ))
+
+(define-subroutine |CdrSubroutine|
+		   (arg5 arg6 arg2 t5 t6 t7 t8 t9 t10 t11 t12)
+		   (r0)
+  ;; --- make part of define-translator-subroutine
+  (STD r0 PROCESSORSTATE_LINKAGE (ivory))
+  (with-multiple-memory-reads (t9 t10 t11 t12)
+    (li r0 4)
+    (STD iSP PROCESSORSTATE_RESTARTSP (Ivory))
+    (call-subroutine |CdrInternal|)
+    ;; --- make part of define-translator-subroutine
+    (stzd PROCESSORSTATE_LINKAGE (ivory))
+    ))
+
+(define-subroutine |CarCdrSubroutine|
+		   (t1 t2 arg5 arg6 arg2 t5 t6 t7 t8 t9 t10 t11 t12)
+		   (r0)
+  ;; --- make part of define-translator-subroutine
+  (STD r0 PROCESSORSTATE_LINKAGE (ivory))
+  (with-multiple-memory-reads (t9 t10 t11 t12)
+    (li r0 4)
+    (STD iSP PROCESSORSTATE_RESTARTSP (Ivory))
+    (call-subroutine |CarCdrInternal|)
+    ;; --- make part of define-translator-subroutine
+    (stzd PROCESSORSTATE_LINKAGE (ivory))
+    ))
+
+;;; Fin

@@ -1,0 +1,476 @@
+/* --- float2 --- */
+
+//#define LOUD
+
+int fregstate[32];
+int subtrace;
+
+enum {
+  FPS_LOADT = 1,
+  FPS_T,	// 8 byte T_float
+  FPS_Q,	// 8 byte int
+  FPS_LOADS,
+  FPS_S,	// 4 byte S_float
+  FPS_L,	// 4 byte int
+};
+
+#define SETFLTT(rn, r, s) \
+	do { r = U64FLTT(s); fregstate[rn] = FPS_T; } while(0)
+
+#define LDS(rn, r, s) r = _LDS(rn, s);
+#define LDT(rn, r, s) r = _LDT(rn, s);
+#define STS(d, rn, r) *d = _STS(rn, r);
+#define STT(d, rn, r) *d = _STT(rn, r);
+
+inline u64
+_LDS(int regnum, u64/*u32*/ v)
+{
+  fregstate[regnum] = FPS_LOADS;
+  //printf("_LDS: %d %p\n", regnum, v);
+  return v;
+}
+
+inline u64
+_LDT(int regnum, u64 v)
+{
+  fregstate[regnum] = FPS_LOADT;
+  return v;
+}
+
+inline u64/*u32*/
+_STS(int regnum, u64 v)
+{
+  if (fregstate[regnum] != FPS_L &&
+      fregstate[regnum] != FPS_S &&
+      fregstate[regnum] != FPS_LOADS)
+    {
+      printf("_STS: %p(%d)\n", (void *)v, fregstate[regnum]);
+    }
+  return v;
+}
+
+inline u64
+_STT(int regnum, u64 v)
+{
+  if (fregstate[regnum] > FPS_T) {
+    printf("_STT: %p(%d)\n", (void *)v, fregstate[regnum]);
+  }
+  return v;
+}
+
+inline float fixsfloat(int r, u64 v)
+{
+#if 1
+  union {
+    double d;
+    u64 l;
+  } u;
+  union {
+    float f;
+    u64 l;
+  } u2;
+
+  //printf("fixsfloat: %d %p(%d)\n", r, (void *)v, fregstate[r]);
+  switch (fregstate[r]) {
+  case FPS_LOADT:
+  case FPS_T:
+    u.l = v;
+    return (float)u.d;
+
+  case FPS_LOADS:
+  case FPS_S:
+    u2.l = v;
+    return u2.f;
+  }
+
+  if (v != 0)
+  printf("fixsfloat: f%d is Q/L! %p\n", r, (void *)v);
+  return 0.0;
+#else
+  union {
+    double d;
+    long l;
+  } u;
+  union {
+    float f;
+    int i;
+    long l;
+  } u2;
+
+  if ((v >> 32) == 0) {
+if (fregstate[r] != FPS_S && fregstate[r] != FPS_LOADS && v != 0)
+printf("fixsfloat: assuming S f%d %p(%d)\n", r, (void *)v, fregstate[r]);
+    u2.l = v;
+    return u2.f;
+  }
+
+if (fregstate[r] != FPS_T)
+printf("fixsfloat: assuming T f%d %p(%d)\n", r, (void *)v, fregstate[r]);
+  u.l = v;
+  u2.l = 0;
+  u2.f = u.d;
+
+  return u2.f;
+#endif
+}
+
+inline double fixtfloat(int r, u64 v)
+{
+#if 1
+  union {
+    double d;
+    u64 l;
+  } u;
+  union {
+    float f;
+    u64 l;
+  } u2;
+
+  //printf("fixtfloat: %d %p(%d)\n", r, v, fregstate[r]);
+  switch (fregstate[r]) {
+  case FPS_LOADT:
+  case FPS_T:
+    u.l = v;
+    return u.d;
+
+  case FPS_LOADS:
+  case FPS_S:
+    u2.l = v;
+    return (double)u2.f;
+  }
+
+  printf("fixtfloat: f%d is Q/L! %p(%d)\n", r, (void *)v, fregstate[r]);
+  return 0.0;
+#else
+  union {
+    double d;
+    long l;
+  } u;
+  union {
+    float f;
+    int i;
+    long l;
+  } u2;
+
+  if ((v >> 32) != 0 || v == 0) {
+if (fregstate[r] != FPS_T && v != 0)
+printf("fixtfloat: assuming T f%d %p(%d)\n", r, (void *)v, fregstate[r]);
+    u.l = v;
+    return u.d;
+  }
+
+if (fregstate[r] != FPS_S && fregstate[r] != FPS_LOADS) {
+printf("fixtfloat: assuming S f%d %p(%d)\n", r, (void *)v, fregstate[r]);
+while (1);
+}
+  u2.l = v;
+  u.d = u2.f;
+
+  return u.d;
+#endif
+}
+
+#define CPYSN(dr, d, sr1, s1, sr2, s2) d = _CPYSN(dr, sr1, s1, sr2, s2)
+
+inline u64 _CPYSN(int rd, int ra, u64 a, int rb, u64 b)
+{
+  union {
+    double d;
+    u64 l;
+  } u1, u2;
+  double signbit = -1.0;
+  u1.l = a;
+  u2.l = b;
+
+  if (fregstate[ra] != FPS_T || fregstate[rb] != FPS_T) {
+    printf("CPYSN: %p %p\n", (void *)a, (void *)b);
+    printf("CPYSN: %g(%d) %g(%d) ", u1.d, fregstate[ra], u2.d, fregstate[rb]);
+  }
+
+  if (u1.d <= 0.0)
+    signbit = 1.0;
+  if (u2.d < 0.0)
+    u2.d = -u2.d;
+  u2.d *= signbit;
+  //  printf(" -> %g\n", u2.d);
+  fregstate[rd] = FPS_T;
+  return u2.l;
+}
+
+
+#define CVTLQ(dr, d, s1, sr2, s2) d = _CVTLQ(dr, sr2, s2)
+#define CVTQL(dr, d, s1, sr2, s2) d = _CVTQL(dr, sr2, s2)
+#define CVTQLV(dr, d, s1, sr2, s2) d = _CVTQL(dr, sr2, s2)
+#define CVTQS(dr, d, s1, sr2, s2) d = _CVTQS(dr, sr2, s2)
+#define CVTQT(dr, d, s1, sr2, s2) d = _CVTQT(dr, sr2, s2)
+#define CVTTQ(dr, d, s1, sr2, s2) d = _CVTTQ(dr, sr2, s2)
+#define CVTTQV(dr, d, s1, sr2, s2) d = _CVTTQ(dr, sr2, s2)
+#define CVTTQVC(dr, d, s1, sr2, s2) d = _CVTTQ(dr, sr2, s2)
+#define CVTTQVM(dr, d, s1, sr2, s2) d = _CVTTQVM(dr, sr2, s2)
+#define CVTTQSVI(dr, d, s1, sr2, s2) d = _CVTTQ(dr, sr2, s2)
+#define CVTTS(dr, d, s1, sr2, s2) d = _CVTTS(dr, sr2, s2)
+
+//#define LOUD
+
+inline u64 _CVTLQ(int dr, int rv2, u64 v2)
+{
+  if (fregstate[rv2] != FPS_L && fregstate[rv2] != FPS_LOADS) {
+    printf("_CVTLQ: %p(%d)\n", (void *)v2, fregstate[rv2]);
+  }
+#ifdef LOUD
+  if (subtrace) printf("_CVTLQ: %p\n", (void *)v2);
+#endif
+  fregstate[dr] = FPS_Q;
+  return (int)v2;
+}
+
+inline u64 _CVTQL(int dr, int rv2, u64 v2)
+{
+  u64 l;
+  l = (int)v2;
+  fregstate[dr] = FPS_L;
+  return l;
+}
+
+inline u64 _CVTQS(int dr, int rv2, u64 v2)
+{
+  union {
+    float f;
+    u64 l;
+  } u;
+  fregstate[dr] = FPS_S;
+  u.f = (s64)v2;
+#ifdef LOUD
+  if (subtrace) printf("_CVTQS: %p %g -> %p\n", (void *)v2, u.f, (void *)u.l);
+#endif
+  return u.l;
+}
+
+inline u64 _CVTQT(int dr, int rv2, u64 v2)
+{
+  union {
+    double d;
+    u64 l;
+  } u;
+  if (fregstate[rv2] != FPS_Q) {
+    printf("_CVTQT: %p(%d)\n", (void *)v2, fregstate[rv2]);
+  }
+  fregstate[dr] = FPS_T;
+  u.d = (s64)v2;
+#ifdef LOUD
+//  printf("_CVTQT(d=r%d) %llx %g -> %p\n", dr, v2, u.d, (void *)u.l);
+//  printf("_CVTQT(d=r%d) %p %g -> %p\n", dr, (void *)v2, u.d, (void *)u.l);
+  if (subtrace) printf("_CVTQT(d=r%d) %p %g -> %p\n", dr, (void *)v2, 0.0/*u.d*/, (void *)u.l);
+#endif
+  return u.l;
+}
+
+inline u64 _CVTTQ(int dr, int rv2, u64 v2)
+{
+  union {
+    double d;
+    u64 l;
+  } u;
+  if (fregstate[rv2] > FPS_T) {
+    printf("_CVTTQ: %p(%d)\n", (void *)v2, fregstate[rv2]);
+  }
+  fregstate[dr] = FPS_Q;
+  u.l = v2;
+#ifdef LOUD
+  if (subtrace) printf("_CVTTQ %p %g %p -> %p\n", (void *)v2, u.d, (void *)u.l, (void *)(u64)u.d);
+#endif
+  return (u64)(u.d);
+}
+
+inline inline u64 _CVTTQVM(int dr, int rv2, u64 v2)
+{
+  union {
+    double d;
+    u64 l;
+  } u;
+  u.l = v2;
+  //  printf("CVTTQVM: %g %d\n", u.d, (int)trunc(u.d));
+  //  return (int)trunc(u.d);
+if (u.d < 0.0) u.d -= 0.5;
+//if (u.d > 0.0) u.d += 0.5;
+//  printf("CVTTQVM: %g %d\n", u.d, (int)u.d);
+  fregstate[dr] = FPS_Q;
+#ifdef LOUD
+  if (subtrace) printf("_CVTTQVM %p -> %p\n", (void *)v2, (void *)(long)u.d);
+#endif
+  return (long)u.d;
+}
+
+inline u64 _CVTTS(int dr, int rv2, u64 v2)
+{
+  union {
+    double d;
+    long l;
+  } u;
+  union {
+    float f;
+    u32 i;
+    long l;
+  } u2;
+
+  u.l = v2;
+  u2.l = 0;
+  u2.f = u.d;
+
+#ifdef LOUD
+  if (subtrace) printf("_CVTTS %p -> %p\n", (void *)v2, (void *)(u64)u2.i);
+#endif
+
+  if (fregstate[rv2] != FPS_T && fregstate[rv2] != FPS_LOADT) {
+    printf("_CVTTS: f%d %p <- %p(%d)\n",
+	   dr, (void *)(u64)u2.i, (void *)v2, fregstate[rv2]);
+  }
+
+  fregstate[dr] = FPS_S;
+  return (u64)u2.i;
+}
+
+inline double FLTU64(int rv, u64 v)
+{
+  return fixtfloat(rv, v);
+}
+
+inline u64 U64FLTT(double v)
+{
+  union {
+    double d;
+    u64 l;
+  } u;
+  u.d = v;
+  return u.l;
+}
+
+inline u64 U64FLTS(float v)
+{
+  union {
+    float f;
+    u64 l;
+  } u;
+//  u.l = 0;
+  u.f = v;
+  return u.l;
+}
+
+#define ADDS(dr, d, sr1, s1, sr2, s2) d = _ADDS(dr, sr1, s1, sr2, s2)
+#define SUBS(dr, d, sr1, s1, sr2, s2) d = _SUBS(dr, sr1, s1, sr2, s2)
+#define MULS(dr, d, sr1, s1, sr2, s2) d = _MULS(dr, sr1, s1, sr2, s2)
+#define DIVS(dr, d, sr1, s1, sr2, s2) d = _DIVS(dr, sr1, s1, sr2, s2)
+
+#define ADDT(dr, d, sr1, s1, sr2, s2) d = _ADDT(dr, sr1, s1, sr2, s2)
+#define SUBT(dr, d, sr1, s1, sr2, s2) d = _SUBT(dr, sr1, s1, sr2, s2)
+#define MULT(dr, d, sr1, s1, sr2, s2) d = _MULT(dr, sr1, s1, sr2, s2)
+#define DIVT(dr, d, sr1, s1, sr2, s2) d = _DIVT(dr, sr1, s1, sr2, s2)
+
+inline u64 _ADDS(int rd, int ra, u64 a, int rb, u64 b)
+{
+  float fa, fb;
+  fa = fixsfloat(ra, a);
+  fb = fixsfloat(rb, b);
+#ifdef LOUD
+  printf("ADDS: %p %p\n", (void *)a, (void *)b);
+  printf("ADDS: %g %g %g\n", fa, fb, fa + fb);
+#endif
+  fregstate[rd] = FPS_S;
+  return U64FLTS(fa + fb);
+}
+
+inline u64 _ADDT(int rd, int ra, u64 a, int rb, u64 b)
+{
+  double fa, fb;
+  fa = fixtfloat(ra, a);
+  fb = fixtfloat(rb, b);
+#ifdef LOUD
+  printf("ADDT: %p %p\n", (void *)a, (void *)b);
+  printf("ADDT: %g %g %g\n", fa, fb, fa + fb);
+#endif
+  fregstate[rd] = FPS_T;
+  return U64FLTT(fa + fb);
+}
+
+inline u64 _SUBS(int rd, int ra, u64 a, int rb, u64 b)
+{
+  float fa, fb;
+  fa = fixsfloat(ra, a);
+  fb = fixsfloat(rb, b);
+#ifdef LOUD
+  printf("SUBS: %p %p\n", (void *)a, (void *)b);
+  printf("SUBS: %g %g %g\n", fa, fb, fa - fb);
+#endif
+  fregstate[rd] = FPS_S;
+  return U64FLTS(fa - fb);
+}
+
+inline u64 _SUBT(int rd, int ra, u64 a, int rb, u64 b)
+{
+  double fa, fb;
+  fa = fixtfloat(ra, a);
+  fb = fixtfloat(rb, b);
+#ifdef LOUD
+  printf("SUBT: %p %p\n", (void *)a, (void *)b);
+  printf("SUBT: %g %g %g\n", fa, fb, fa - fb);
+#endif
+  fregstate[rd] = FPS_T;
+  return U64FLTT(fa - fb);
+}
+
+inline u64 _MULS(int rd, int ra, u64 a, int rb, u64 b)
+{
+  float fa, fb;
+  fa = fixsfloat(ra, a);
+  fb = fixsfloat(rb, b);
+#ifdef LOUD
+  printf("MULS: %p %p\n", (void *)a, (void *)b);
+  printf("MULS: %g %g %g\n", fa, fb, fa * fb);
+#endif
+  fregstate[rd] = FPS_S;
+  return U64FLTS(fa * fb);
+}
+
+inline u64 _MULT(int rd, int ra, u64 a, int rb, u64 b)
+{
+  double fa, fb;
+  fa = fixtfloat(ra, a);
+  fb = fixtfloat(rb, b);
+#ifdef LOUD
+  printf("MULT: %p %p\n", (void *)a, (void *)b);
+  printf("MULT: %g %g %g\n", fa, fb, fa * fb);
+#endif
+  fregstate[rd] = FPS_T;
+  return U64FLTT(fa * fb);
+}
+
+inline u64 _DIVS(int rd, int ra, u64 a, int rb, u64 b)
+{
+  float fa, fb;
+  fa = fixsfloat(ra, a);
+  fb = fixsfloat(rb, b);
+#ifdef LOUD
+  printf("DIVS: %p %p\n", (void *)a, (void *)b);
+  printf("DIVS: %g %g %g\n", fa, fb, fa / fb);
+#endif
+  fregstate[rd] = FPS_S;
+  return U64FLTS(fa / fb);
+}
+
+inline u64 _DIVT(int rd, int ra, u64 a, int rb, u64 b)
+{
+  double fa, fb;
+  fa = fixtfloat(ra, a);
+  fb = fixtfloat(rb, b);
+#ifdef LOUD
+  printf("DIVT: %d:%p %d:%p -> %p %p\n",
+	 fregstate[ra], (void *)a, fregstate[rb], (void *)b, (void *)*(long *)&fa, (void *)*(long *)&fb);
+  printf("DIVT: %g %g %g %p\n", fa, fb, fa / fb, (void *)U64FLTT(fa / fb));
+#endif
+  fregstate[rd] = FPS_T;
+  return U64FLTT(fa / fb);
+}
+
+#undef LOUD
+
+/* --- end float --- */

@@ -1,0 +1,63 @@
+vlm for linux on x86_64
+
+if you don't know what it is, you probably don't want it...
+
+based on the admirable work of Brad Parker who changed the alpha assembler
+code generator to produce c-code runnable on an x86_64 platform
+
+this version uses a TUNTAP tap device for networking, that way
+it doesn't need root privileges to run if you define a tap
+interface beforehand. I decided to use a tap (as opposed to a tun)
+interface because access to the complete ethernet frame is possible
+with a tap interface - making my life easier since I'm currently
+writing a chaosnet network module for Linux and would need access to
+the complete ethernet frame therefore. Also it is possible to put tap
+devices on a bridge with different mac addresses to be able to run
+multiple vlm instances communicating to each other via chaosnet.
+
+this version has fixes for:
+     - X11 with xcb lib (runs with or without xcb)
+     since clx directly accesses the bar-bones X11-protocol, xcb
+     gets confused when you try to XCloseDisplay/XSynch because clx tries
+     to keep track of the X11 calls internally which it is unable to
+     do with a mixture of XLIB calls and direct access to the X11-protocol.
+     This in turn keeps the vlm from cleanly closing a display, which it
+     uses when terminating and/or saving a LISP world.
+     So, if we detect xcb being used, we use a workaround for closing
+     X displays...
+
+     - keyboard mapping for the cold-load/debugger window
+     I deemed it unsatisfactory to not being able to use the CTRL-, META-,
+     SUPER-, and HYPER- keys in the cold-load/debugger window, so I did setup
+     a mapping for those keys like it is done in the GENERA system itself. You
+     may use the same keys now in the cold-load/debugger window.
+
+     - rational division (/ 3) yields 1/3 instead of 0
+     doesn't work in Brads version, because rational division ought to
+     produce a trap if there is a non-zero remainder from a division. I've
+     decide to produce asm code for rational division by generating a new
+     pseudo alpha instruction (x64ratquo) and generating asm code from that.
+     see alpha-assembler/imacmath.lisp and stub/process.lisp
+
+     - double float exceptions (/ 0.0d0) results in a valid trap now
+     has not been implemented in the alpha assembly version (forgotten
+     perhaps).
+     Changed that in the generation of alpha assembly code (tested on an alpha
+     as well). see alpha-assembler/imactrap.lisp.
+
+there are extensions for:
+      - blocksize settable for attach-disk-channel (to be able to use fep-file
+      images with non-2048 word blocks, like images derived from ancient
+      ESDI disks.
+
+      - a unix crypt routine
+      links to unix crypt to enable use of modern crypt algorithms.
+
+      - unix cwd and unix home dir to be found in embedded communication area
+
+      You won't be able to use these extensions if you do not patch and
+      recompile respective the LISP definitions as well.
+
+to install follow the instructions given in the file INSTALL.
+
+./configure --help will give you some configuration options

@@ -1,0 +1,835 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+;(include-header "ifunhead.s")
+
+(comment "Subprimitives.")
+
+(define-instruction |DoEphemeralp| :operand-from-stack-signed-immediate ()
+    (LD t1 PROCESSORSTATE_PTRTYPE (ivory) "ptr type array")
+    (srdi arg2 arg1 32)
+    (clrldi arg1 arg1 32)
+    (TagType arg2 arg2)
+    (sldi t2 arg2 2 "t2:=4*arg2")
+    (ADD t2 t2 t1)
+    (srdi arg1 arg1 27)
+    (LWA t3 0 (t2)     "=0 if not a pointer")
+    (GetNextPCandCP)
+    (branch-if-nonzero arg1 nonephem "J. if zone not ephemeral")
+    (branch-if-zero t3 nonephem "J. if not a pointer")
+    (stack-push-t t6 t7)
+    (ContinueToNextInstruction-NoStall)
+  (label nonephem)
+    (stack-push-nil t6 t7)
+    (ContinueToNextInstruction-NoStall))
+
+(align4kskip4k)
+
+;; Handles DoUnsignedLesspNoPop as well...
+(define-instruction |DoUnsignedLessp| :operand-from-stack-immediate (:own-immediate t)
+    (LWA t2 4 (iSP) "Get data from arg1")
+    (srdi arg3 arg3 #.(+ 10 2))
+    (Get-NIL t11) 
+    (clrldi t4 arg1 32 "Get unsigned data from arg2")
+    (Get-T t12)
+    (ANDI-DOT arg3 arg3 1 "1 if no-pop, 0 if pop")
+    (clrldi t2 t2 32 "Unsigned arg1")
+    (sldi t6 arg3 3)
+    (ADD iSP t6 iSP "Either a stack-push or a stack-write")
+    (SUBF t6 t2 t4 "t6:=arg2-arg1 unsigned")
+    (CMPI 0 1 t6 0)
+    (BC 4 1 skip19 "B.LE")
+    (mov t11 t12)
+  (unlikely-label skip19)
+    (GetNextPCandCP)
+    (stack-write iSP t11)
+    (ContinueToNextInstruction-NoStall)
+  (immediate-handler |DoUnsignedLessp|)
+    (LWA t2 4 (iSP) "Get data from arg1")
+    (srdi arg3 arg3 #.(+ 10 2))
+    (Get-NIL t11) 
+    (clrldi t2 t2 32 "...")
+    (Get-T t12)
+    (ANDI-DOT arg3 arg3 1 "1 if no-pop, 0 if pop")
+    (SUBF t6 t2 arg2 "t6:=arg2-arg1 unsigned")
+    (sldi t2 arg3 3)
+    (ADD iSP t2 iSP "Either a stack-push or a stack-write")
+    (CMPI 0 1 t6 0)
+    (BC 4 1 skip20 "B.LE")
+    (mov t11 t12)
+  (unlikely-label skip20)
+    (GetNextPCandCP)
+    (stack-write iSP t11)
+    (ContinueToNextInstruction-NoStall))
+
+
+(define-instruction |DoAllocateListBlock| :operand-from-stack-immediate ()
+    (i%allocate-block t t))
+
+(define-instruction |DoAllocateStructureBlock| :operand-from-stack-immediate ()
+    (i%allocate-block nil t))
+
+
+;; |DoPointerPlus| is in IFUNCOM1.PPCS
+
+(define-instruction |DoPointerDifference| :operand-from-stack-immediate (:own-immediate t)
+    (LWA t1 4 (iSP) "Get the data of ARG1")
+    (exts t2 arg1 32 "Get the data of ARG2")
+    ;(clrldi t1 t1 0 32)
+    (SUBF t3 t2 t1 "(%32-bit-difference (data arg1) (data arg2))")
+    (GetNextPCandCP)
+    (stack-write-ir |TypeFixnum| t3 t4 "Save result and coerce to a FIXNUM")
+    (ContinueToNextInstruction-NoStall)
+  (immediate-handler |DoPointerDifference|)
+    (exts t2 arg2 8)
+    (LWA t1 4 (iSP) "Get the data of arg1")
+    ;(clrldi t1 t1 32)
+    (SUBF t3 t2 t1 "(%32-bit-difference (data arg1) (data arg2))")
+    (GetNextPCandCP)
+    (stack-write-ir |TypeFixnum| t3 t4 "Save result and coerce to a FIXNUM")
+    (ContinueToNextInstruction-NoStall))
+
+(define-instruction |DoPointerIncrement| :operand-from-stack ()
+    (LWA t2 4 (arg1) "Get the data of arg2")
+    (exts t3 t2 32)
+    (ADDI t3 t3 1 "(%32-bit-plus (data arg1) 1)") ;t3=signextend(t2)+1
+    (GetNextPCandCP)
+    (STW t3 4 (arg1) "Put result back")
+    (ContinueToNextInstruction-NoStall))
+
+
+;; |DoMemoryRead| and |DoMemoryReadAddress| are in IFUNCOM1.PPCS
+
+
+;; |DoTag| is in IFUNCOM2.PPCS
+
+;; |DoSetTag| is in IFUNCOM1.PPCS
+
+
+(define-instruction |DoStoreConditional| :operand-from-stack-signed-immediate ()
+    (srdi arg2 arg1 32)
+    (stack-pop2 arg3 arg4 "old tag and data")
+    (clrldi arg1 arg1 32)
+    (stack-pop2 arg5 arg6 "address tag and data")
+    (TagType arg5 t1)
+    (CheckDataType t1 |TypeLocative| storecondiop t2)
+    (store-conditional-internal arg6 arg3 arg4 arg2 arg1 storecondnil t1 t2 t3 t4 t5 t6)
+    (GetNextPCandCP)
+    (stack-push-t t6 t7)
+    (ContinueToNextInstruction-NoStall)
+  (label storecondnil)
+    (GetNextPCandCP)
+    (stack-push-nil t6 t7)
+    (ContinueToNextInstruction-NoStall)
+  (label storecondiop)
+    (illegal-operand (operand-1-type-error (dtp-locative))))
+
+(define-instruction |DoMemoryWrite| :operand-from-stack-signed-immediate ()
+    (stack-pop2 arg3 arg4)			;+++ actually only need the vma
+    (srdi arg2 arg1 32)
+    (clrldi arg1 arg1 32)
+    ;; Perform a RAW write
+    (memory-write arg4 arg2 arg1 PROCESSORSTATE_RAW t1 t2 t3 t4 t5
+		  NextInstruction)
+    (ContinueToNextInstruction))
+
+(define-instruction |DoPStoreContents| :operand-from-stack-signed-immediate ()
+    (stack-pop2 arg3 arg4 "address tag and data")
+    (srdi arg2 arg1 32)
+    (clrldi arg1 arg1 32)
+    (store-contents arg4 arg2 arg1 PROCESSORSTATE_RAW t4 t5 t6 t7 t8 t9
+		    NextInstruction)
+    (ContinueToNextInstruction))
+
+
+(define-instruction |DoSetCdrCode1| :operand-from-stack ()
+    (i%set-cdr-code-n arg1 1 t1))
+
+(define-instruction |DoSetCdrCode2| :operand-from-stack ()
+    (i%set-cdr-code-n arg1 2 t1))
+
+;; |DoMergeCdrNoPop| is in IFUNCOM2.PPCS
+
+(define-instruction |DoJump| :operand-from-stack ()
+    (stack-read2 arg1 t3 t4 "Read address and even/odd PC tag.")
+    (CheckAdjacentDataTypes t3 |TypeEvenPC| 2 jexc t5)
+    (sldi t4 t4 1)
+    (ANDI-DOT iPC t3 1)
+    (ADD iPC iPC t4)
+    (ANDI-DOT t5 t3 #x80)
+    (long-branch-if-zero t5 InterpretInstructionForJump)
+    (comment "Bit 39=1 indicates we need to update control reg")
+    (ANDI-DOT t6 t3 #x40 "Get the cleanup bit")
+    (LD t5 PROCESSORSTATE_CONTROL (ivory) "Processor control register.")
+    (sldi t6 t6 #.(- 23 6) "shift into cleanup-in-progress place")
+    (load-constant t7 #.1_23 "cr.cleanup-in-progress")
+    (ANDC t5 t5 t7 "Mask")
+    (OR t5 t5 t6 "Set")
+    (STD t5 PROCESSORSTATE_CONTROL (ivory))
+    (B InterpretInstructionForJump)
+  (label jexc)
+    (prepare-exception %jump 0)
+    (instruction-exception))
+
+;;+++ Do we need to check for trap?
+(define-instruction |DoCheckPreemptRequest| :10-bit-immediate ()
+    (check-preempt-request NextInstruction t1 t2 t)
+    (ContinueToNextInstruction))
+
+
+(define-instruction |DoHalt| :10-bit-immediate ()
+    (get-control-register t1)
+    (srdi t1 t1 30 "Isolate current trap mode (FEP mode = -1)")
+    (addwi t1 t1 1 "t1 is zero iff we're in trap mode FEP") ;t1=signextend(t1)+1
+    (branch-if-nonzero t1 haltexc)
+    (halt-machine)
+  (label haltexc)
+    (prepare-exception %halt 0)
+    (instruction-exception))
+
+
+(define-instruction |DoNoOp| :10-bit-immediate ()
+    (ContinueToNextInstruction))
+
+
+;;; This implementation is based on the PTW 'C' implementation.
+(define-instruction |DoAlu| :operand-from-stack-signed-immediate ()
+    (srdi arg2 arg1 32 "Get tag of ARG2")
+    (clrldi arg1 arg1 32 "Get data of ARG2")
+    (stack-read2 iSP arg3 arg4 "Get ARG1")
+    (CheckDataType arg2 |TypeFixnum| aluexc t1)
+    (CheckDataType arg3 |TypeFixnum| aluexc t1)
+    (LD arg5 PROCESSORSTATE_ALUOP (ivory))
+    (stzd PROCESSORSTATE_ALUOVERFLOW (ivory))
+    (LD arg6 PROCESSORSTATE_ALUANDROTATECONTROL (ivory))
+    (basic-dispatch arg5 t1
+      (|ALUFunctionBoolean| 
+	(alu-function-boolean arg6 t10 arg4 arg1 t1)
+	(STW t10 4 (iSP))
+	(ContinueToNextInstruction))
+      (|ALUFunctionByte|
+	(alu-function-byte arg6 arg4 arg1 t10 t1 t2 t3 t4 t5)
+	(STW t10 4 (iSP))
+	(ContinueToNextInstruction))
+      (|ALUFunctionAdder|
+	(alu-function-adder arg6 arg4 arg1 t10 t1 t2 t3 t4)
+	(STW t10 4 (iSP))
+	(ContinueToNextInstruction))
+      (|ALUFunctionMultiplyDivide|
+	(alu-function-multiply-divide arg6 arg4 arg1 t10 t1 t2)
+	(STW t10 4 (iSP))
+	(ContinueToNextInstruction)))
+  (label aluexc)
+    (illegal-operand two-operand-fixnum-type-error))
+
+;;; This says unimplemented, but that is the correct implementation of it!
+(define-instruction |DoSpareOp| :10-bit-immediate ()
+    (LD t1 CACHELINE_INSTRUCTION (iCP) "Get the instruction")
+    (srdi t1 t1 10 "Position the opcode")
+    (ANDI-DOT t1 t1 #xFF "Extract it")
+    ;; PREPARE-EXCEPTION can't be used as the opcode is variable,
+    ;; so we expand it by hand.
+    (clr arg1 "arg1 = instruction arity")
+    (mov arg2 t1 "arg2 = instruction opcode")
+    (li arg3 1 "arg3 = stackp")
+    (clr arg4 "arg4 = arithmeticp")
+    (clr arg5 "when not stackp arg5=the arg")
+    (clr arg6 "arg6=tag to dispatch on")
+    (instruction-exception "Unimplemented")
+    (ContinueToNextInstruction))
+
+
+
+(comment "Reading and writing internal registers")
+
+;; |DoReadInternalRegister| is in IFUNCOM1.PPCS
+
+(define-procedure |ReadRegisterFP| ()
+  (SCAtoVMA iFP t4 t5)
+  (stack-push-ir |TypeLocative| t4 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterLP| ()
+  (SCAtoVMA iLP t4 t5)
+  (stack-push-ir |TypeLocative| t4 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterSP| ()
+  (SCAtoVMA iSP t4 t5)
+  (stack-push-ir |TypeLocative| t4 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterStackCacheLowerBound| ()
+  (LD t3 PROCESSORSTATE_STACKCACHEBASEVMA (ivory))
+  (stack-push-ir |TypeLocative| t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterBARx| ()
+  (srdi t2 arg1 7 "BAR number into T2")
+  (GetNextPC)
+  (ADDI t1 ivory PROCESSORSTATE_BAR0)
+  (GetNextCP)
+  (sldi t3 t2 3)
+  (ADD t1 t3 t1 "Now T1 points to the BAR")
+  (LD t3 0 (t1))
+  (stack-push-ir |TypeLocative| t3 t4)
+  (ContinueToNextInstruction-NoStall))
+
+(define-procedure |ReadRegisterContinuation| ()
+  (LD t3 PROCESSORSTATE_CONTINUATION (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterAluAndRotateControl| ()
+  (LD t3 PROCESSORSTATE_ALUANDROTATECONTROL (ivory))
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterControlRegister| ()
+  (get-control-register t3)
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterCRArgumentSize| ()
+  (get-control-register t3)
+  (ANDI-DOT t3 t3 #xFF "Get the argument size field")
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterEphemeralOldspaceRegister| ()
+  (LWA t3 PROCESSORSTATE_EPHEMERALOLDSPACE (ivory))
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterZoneOldspaceRegister| ()
+  (LWA t3 PROCESSORSTATE_ZONEOLDSPACE (ivory))
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterChipRevision| ()
+  (li t3 5)					;+++ magic number
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))	  
+
+(define-procedure |ReadRegisterFPCoprocessorPresent| ()
+  (clr R31)
+  (stack-push-fixnum R31 t4)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterPreemptRegister| ()
+  (LWA t3 PROCESSORSTATE_INTERRUPTREG (ivory))
+  (ANDI-DOT t3 t3 3)				;+++ 3 is a bit magic!
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterIcacheControl|	     ()
+  (clr R31)
+  (stack-push-fixnum R31 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterPrefetcherControl| ()
+  (clr R31)
+  (stack-push-fixnum R31 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterMapCacheControl| ()
+  (clr R31)
+  (stack-push-fixnum R31 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterMemoryControl| ()
+  (clr R31)
+  (stack-push-fixnum R31 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterStackCacheOverflowLimit| ()
+  (LWA t3 PROCESSORSTATE_SCOVLIMIT (ivory))
+  (LD t4 PROCESSORSTATE_STACKCACHEBASEVMA (ivory))
+  (ADD t3 t3 t4)
+  (stack-push-ir |TypeLocative| t3 t4)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterMicrosecondClock| ()
+  (clr R31)
+  (stack-push-ir |TypeFixnum| R31 t1)
+  (ContinueToNextInstruction))		;+++ an approximation for now!
+
+(define-procedure |ReadRegisterTOS| ()
+  (stack-top t1)
+  (stack-push t1 t2 "Push CDR-NEXT TOS")
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterEventCount| ()
+  (LD t3 PROCESSORSTATE_AREVENTCOUNT (ivory))
+  (stack-push-fixnum t3 t4)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterBindingStackPointer| ()
+  (LD t3 PROCESSORSTATE_BINDINGSTACKPOINTER (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterCatchBlockList| ()
+  (LD t3 PROCESSORSTATE_CATCHBLOCK (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterControlStackLimit| ()
+  (LWA t3 PROCESSORSTATE_CSLIMIT (ivory))
+  (stack-push-ir |TypeLocative| t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterControlStackExtraLimit| ()
+  (LWA t3 PROCESSORSTATE_CSEXTRALIMIT (ivory))
+  (stack-push-ir |TypeLocative| t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterBindingStackLimit| ()
+  (LD t3 PROCESSORSTATE_BINDINGSTACKLIMIT (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterPHTBase| ()
+  (clr R31)
+  (stack-push-ir |TypeLocative| R31 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterPHTMask| ()
+  (clr R31)
+  (stack-push-fixnum R31 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterCountMapReloads| ()
+  (clr R31)
+  (stack-push-fixnum R31 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterListCacheArea| ()
+  (LD t3 PROCESSORSTATE_LCAREA (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterListCacheAddress| ()
+  (LD t3 PROCESSORSTATE_LCADDRESS (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterListCacheLength| ()
+  (LWA t3 PROCESSORSTATE_LCLENGTH (ivory))
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterStructureCacheArea| ()
+  (LD t3 PROCESSORSTATE_SCAREA (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterStructureCacheAddress| ()
+  (LD t3 PROCESSORSTATE_SCADDRESS (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterStructureCacheLength| ()
+  (LWA t3 PROCESSORSTATE_SCLENGTH (ivory))
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterDynamicBindingCacheBase| ()
+  (LD t3 PROCESSORSTATE_DBCBASE (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterDynamicBindingCacheMask| ()
+  (LD t3 PROCESSORSTATE_DBCMASK (ivory))
+  (stack-push t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterChoicePointer| ()
+  (LWA t3 PROCESSORSTATE_CHOICEPTR+4 (ivory))
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterStructureStackChoicePointer| ()
+  (LWA t3 PROCESSORSTATE_SSTKCHOICEPTR+4 (ivory))  
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterFEPModeTrapVectorAddress| ()
+  (LD t3 PROCESSORSTATE_FEPMODETRAPVECADDRESS (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterStackFrameMaximumSize| ()
+  (load-constant t3 #.|stack$K-maxframesize|)
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterStackCacheDumpQuantum| ()
+  (load-constant t3 #.|stack$K-cachedumpquantum|)
+  (stack-push-fixnum t3 t5)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterConstantNIL| ()
+  (stack-push-T t5 t6)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterConstantT| ()
+  (stack-push-NIL t5 t6)
+  (ContinueToNextInstruction))
+
+(define-procedure |ReadRegisterError| ()
+  (illegal-operand unknown-internal-register))
+
+
+;; |DoWriteInternalRegister| is in IFUNCOM1.PPCS
+
+(define-procedure |WriteRegisterFP| ()
+  ;; Use the StackSwitch coprocessor register, instead.
+  (passthru "#ifdef IVERIFY")
+  (VMAtoSCAmaybe arg3 t1 badregister t2 t3)
+  (mov iFP t1)
+  (ContinueToNextInstruction)
+  (passthru "#else")
+  (illegal-operand unknown-internal-register)
+  (passthru "#endif"))
+
+(define-procedure |WriteRegisterLP| ()
+  ;; Use the StackSwitch coprocessor register, instead.
+  (passthru "#ifdef IVERIFY")
+  (VMAtoSCAmaybe arg3 t1 badregister t2 t3)
+  (mov iLP t1)
+  (ContinueToNextInstruction)
+  (passthru "#else")
+  (illegal-operand unknown-internal-register)
+  (passthru "#endif"))
+
+(define-procedure |WriteRegisterSP| ()
+  ;; Use the StackSwitch coprocessor register, instead.
+  (passthru "#ifdef IVERIFY")
+  (VMAtoSCAmaybe arg3 t1 badregister t2 t3)
+  (mov iSP t1)
+  (ContinueToNextInstruction)
+  (passthru "#else")
+  (illegal-operand unknown-internal-register)
+  (passthru "#endif"))
+
+(passthru "#ifdef IVERIFY")
+(define-procedure BadRegister ()
+  (illegal-operand unknown-internal-register))
+(passthru "#endif")
+
+(define-procedure |WriteRegisterStackCacheLowerBound| ()
+  ;; Use the StackSwitch coprocessor register, instead.
+  (passthru "#ifdef IVERIFY")
+  (STD arg3 PROCESSORSTATE_STACKCACHEBASEVMA (ivory))
+  (LD t1 PROCESSORSTATE_STACKCACHESIZE (ivory))
+  (ADD t1 arg3 t1)
+  (STD t1 PROCESSORSTATE_STACKCACHETOPVMA (ivory))
+  (ContinueToNextInstruction)
+  (passthru "#else")
+  (illegal-operand unknown-internal-register)
+  (passthru "#endif"))
+
+;; |WriteRegisterBARx| is in IFUNCOM1.PPCS
+
+(define-procedure |WriteRegisterContinuation| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_CONTINUATION (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterAluAndRotateControl| ()
+  (read-alu-function-class-bits arg3 t1)
+  (STD arg3 PROCESSORSTATE_ALUANDROTATECONTROL (ivory))
+  (read-alu-byte-size arg3 t2)
+  (STD t1 PROCESSORSTATE_ALUOP (ivory))
+  (read-alu-byte-rotate arg3 t3)
+  (STD t2 PROCESSORSTATE_BYTESIZE (ivory))
+  (STD t3 PROCESSORSTATE_BYTEROTATE (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterControlRegister| ()
+  (STW arg3 PROCESSORSTATE_CONTROL+4 (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterEphemeralOldspaceRegister| ()
+  ;; Invalidate all automatic array registers upon flip.
+  (clr t1)
+  (STD t1 PROCESSORSTATE_AC0ARRAY (ivory))
+  (STD t1 PROCESSORSTATE_AC1ARRAY (ivory))
+  (STD t1 PROCESSORSTATE_AC2ARRAY (ivory))
+  (STD t1 PROCESSORSTATE_AC3ARRAY (ivory))
+  (STD t1 PROCESSORSTATE_AC4ARRAY (ivory))
+  (STD t1 PROCESSORSTATE_AC5ARRAY (ivory))
+  (STD t1 PROCESSORSTATE_AC6ARRAY (ivory))
+  (STD t1 PROCESSORSTATE_AC7ARRAY (ivory))
+  (STW arg3 PROCESSORSTATE_EPHEMERALOLDSPACE (ivory))
+  #+obsolete (refill-oldspace-table)
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterZoneOldspaceRegister| ()
+  (STW arg3 PROCESSORSTATE_ZONEOLDSPACE (ivory))
+  ;;+++ Minima writes both registers simultaneously -- This is written first.
+  #+ignore (refill-oldspace-table)
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterFPCoprocessorPresent| ()	;+++ 
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterPreemptRegister| ()
+  (LWA t3 PROCESSORSTATE_INTERRUPTREG (ivory))
+  (clrrdi t3 t3 2)
+  (ANDI-DOT arg3 arg3 3)
+  (OR t3 t3 arg3)
+  (STW t3 PROCESSORSTATE_INTERRUPTREG (ivory))
+  ;; Only set flag if preempt-pending is set
+  (ANDI-DOT R31 t3 1)
+  (bclong 12 2 NextInstruction)
+  (STD t3 PROCESSORSTATE_STOP_INTERPRETER (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterStackCacheOverflowLimit| ()
+  (LD t1 PROCESSORSTATE_STACKCACHEBASEVMA (ivory))
+  (clrldi t1 t1 32)
+  (SUBF t1 t1 arg3)
+  (STW t1 PROCESSORSTATE_SCOVLIMIT (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterTOS| ()
+  ;;+++ What's the right thing to do here?
+  #+ignore (stack-write2 iSP arg2 arg3)
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterEventCount| ()
+  (STD arg3 PROCESSORSTATE_AREVENTCOUNT (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterBindingStackPointer| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_BINDINGSTACKPOINTER (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterCatchBlockList| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_CATCHBLOCK (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterControlStackLimit| ()
+  (STW arg3 PROCESSORSTATE_CSLIMIT (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterControlStackExtraLimit| ()
+  (STW arg3 PROCESSORSTATE_CSEXTRALIMIT (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterBindingStackLimit| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_BINDINGSTACKLIMIT (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterListCacheArea| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_LCAREA (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterListCacheAddress| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_LCADDRESS (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterListCacheLength| ()
+  (STW arg3 PROCESSORSTATE_LCLENGTH (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterStructureCacheArea| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_SCAREA (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterStructureCacheAddress| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_SCADDRESS (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterStructureCacheLength| ()
+  (STW arg3 PROCESSORSTATE_SCLENGTH (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterDynamicBindingCacheBase| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_DBCBASE (ivory))
+  (ContinueToNextInstruction))
+        
+(define-procedure |WriteRegisterDynamicBindingCacheMask| ()
+  (combine-tag-data-word arg2 arg3 arg4)
+  (STD arg4 PROCESSORSTATE_DBCMASK (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterChoicePointer| ()
+  (STW arg3 PROCESSORSTATE_CHOICEPTR+4 (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterStructureStackChoicePointer| ()
+  (STW arg3 PROCESSORSTATE_SSTKCHOICEPTR+4 (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterFEPModeTrapVectorAddress| ()
+  (STW arg3 PROCESSORSTATE_FEPMODETRAPVECADDRESS+4 (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterMappingTableCache| ()
+  ;;+++ Ignore for now, but this would sure be nice
+  #+ignore (STD arg3 PROCESSORSTATE_MAPPINGTABLECACHE (ivory))
+  (ContinueToNextInstruction))
+
+(define-procedure |WriteRegisterError| ()
+  (illegal-operand unknown-internal-register))
+
+
+(comment "Coprocessor read and write are implemented in C in order to")
+(comment "encourage creativity!  The hooks are in aicoproc.c")
+
+(define-instruction |DoCoprocessorRead| :10-bit-immediate ()
+    (CMPI 0 0 arg1 |CoprocessorRegisterMicrosecondClock|)
+    (BC 4 2 cpreadnormal "Jump if not reading microsecond clock")
+    (LD t1 PROCESSORSTATE_PREVIOUSTB (Ivory))
+    (MFTB t2 268 "Get current timebase")
+    (LD t3 PROCESSORSTATE_TICKSPERMS (Ivory))
+    (SUBF-DOT t4 t1 t2 "Timebase ticks since last clock read")
+    (BC 12 0 cpclockwrapped "Jump if timebase wrapped around")
+  (label cpclocknormalized)
+    (LD t5 PROCESSORSTATE_MSCLOCKCACHE (Ivory))
+    (DIVD t4 t4 t3 "Convert to microseconds since last read")
+    (STD t2 PROCESSORSTATE_PREVIOUSTB (Ivory))
+    (ADD t5 t5 t4 "Compute new clock setting")
+    (STD t5 PROCESSORSTATE_MSCLOCKCACHE (Ivory))
+    (stack-push-fixnum t5 t6 "Push the reading")
+    (ContinueToNextInstruction)
+  (label cpclockwrapped)
+    (li t6 -1)
+    (srdi t6 t6 1 "t6 = 64-bit most-positive-fixnum")
+    (ADD t4 t4 t6 "Normalize the timebase difference")
+    (ADDI t4 t4 1)
+    (B cpclocknormalized)
+  (label cpreadnormal)
+    (LD t1 PROCESSORSTATE_COPROCESSORREADHOOK (ivory))
+    (call-c-function t1 t8)
+    (comment "Long -1 is never a valid LISP value")
+    (load-constant t1 -1)
+    (XOR t1 arg1 t1)
+    (branch-false t1 cpreadexc "J. if CoprocessorRead exception return")
+    (stack-push arg1 t1 "Push the result of coprocessor read!")
+    (ContinueToNextInstruction)
+  (label cpreadexc)
+    (illegal-operand unknown-internal-register))
+
+(define-instruction |DoCoprocessorWrite| :10-bit-immediate ()
+    (stack-pop arg2 "The value to be written")
+    (register-dispatch arg1 t1 t2
+      (|CoprocessorRegisterUnwindStackForRestartOrApply|
+	(stack-top2 t2 t1 "peek at new continuation to look at tag")
+	(CheckAdjacentDataTypes t2 |TypeEvenPC| 2 unwindillegalcontinuation t3)
+	(stack-pop t1 "Get new continuation")
+	(set-continuation t1 "Update continuation register")
+	(stzd PROCESSORSTATE_CONTINUATIONCP (Ivory))
+	(stack-pop2 t2 t1 "Get new FP")
+	(CheckDataType t2 |TypeLocative| unwindillegalFP t3)
+	(VMAtoSCA t1 iFP t2)
+	(stack-pop2 t2 t1 "Get new LP")
+	(CheckDataType t2 |TypeLocative| unwindillegalLP t3)
+	(VMAtoSCA t1 iLP t2)
+	(comment "Update CDR-CODEs to make it a legitimate frame")
+	(stack-read-tag iFP t1 "Tag of saved continuation register")
+	(stack-read-tag-disp iFP 8 t2 "Tag of saved control register")
+	(ORI t1 t1 #xC0 "Set CDR-CODE to 3")
+	(stack-write-tag iFP t1 "Put it back")
+	(ORI t2 t2 #xC0 "Set CDR-CODE to 3")
+	(stack-write-tag-disp iFP 8 t2 "Put it back")
+	(comment "Copy the current trap-on-exit bit into the saved control register")
+	(get-control-register t1 "Get control register")
+	(stack-read-data-disp iFP 8 t2 "Get saved control register")
+        (load-constant t3 #.1_24 "cr.trap-on-exit-bit")
+	(ANDC t2 t2 t3 "Remove saved control register's trap-on-exit bit")
+	(AND t1 t1 t3 "Extract control register's trap-on-exit bit")
+	(OR t2 t2 t1 "Copy it into saved control register")
+	(stack-write-data-disp iFP 8 t2 "Update saved control register")
+	(comment "Restore the new control register with proper trap mode")
+ 	(stack-top2 t2 t1 "peek at new control register to look at tag")
+	(CheckDataType t2 |TypeFixnum| unwindillegalcontrol t3)
+	(stack-pop-data t1 "Get new control register")
+	(set-control-register t1))
+      (|CoprocessorRegisterFlushIDCaches|
+	(comment "We're about to flush the instruction cache so we can't rely")
+	(comment "on ContinueToNextInstruction working.  Instead, we must load")
+	(comment "the next PC now and explicitly fill the cache.")
+	(LD iPC CACHELINE_NEXTPCDATA (iCP))
+	(LD t1 PROCESSORSTATE_FLUSHCACHES_HOOK (ivory))
+	(call-c-function t1 t8)
+	(comment "Compute proper iCP after FlushCaches resets it.")
+	;; (PC-TO-iCACHEENT iPC iCP t1 t2) done by ICacheMiss
+	(external-branch ICacheMiss))
+      (|CoprocessorRegisterFlushCachesForVMA|
+	(clrldi arg2 arg2 32 "Extract the VMA")
+;	(li arg3 |TypeEvenPC| "Treat it as an even PC")
+;	(convert-continuation-to-pc arg3 arg2 t1 t2)
+	(sldi t1 arg2 1 "convert continuation to an even pc")
+	(PC-to-iCACHEENT t1 t2 t3 t4)
+	(LD t3 CACHELINE_PCDATA (t2))
+	(XOR t3 t1 t3 "Is this VMA in the cache?")
+	(branch-true t3 dcwnotincache "No.")
+	(stzd CACHELINE_PCDATA (t2) "Yes, flush it")
+	(stzd CACHELINE_PCDATA+CACHELINESIZE (t2))
+	(label dcwnotincache))
+      (|CoprocessorRegisterFlushHiddenArrayRegisters|
+	(clrldi arg2 arg2 32 "Get the VMA of the new stack array")
+	(li t8 |AutoArrayRegMask|)
+	(AND t8 arg2 t8)
+;	(sldi t8 t8 #.|AutoArrayRegShift|)	; mask is in place, so shift is zero.
+	(ADDI t7 ivory PROCESSORSTATE_AC0ARRAY)
+	(ADD t7 t7 t8 "Here is our array register block")
+	(LD t8 ARRAYCACHE_ARRAY (t7) "And here is the cached array")
+	(XOR t8 arg2 t8 "t8==0 iff cached array is ours")
+	(branch-true t8 arraynotincache)
+	(stzd ARRAYCACHE_ARRAY (t7) "Flush it")
+	(label arraynotincache))
+      (:else
+	(comment "Standard coprocessor register processing")
+	(LD t1 PROCESSORSTATE_COPROCESSORWRITEHOOK (ivory))
+	(call-c-function t1 t8) ; RA
+	(branch-if-zero arg1 cpreadexc "J. if CoprocessorWrite exception return")))
+    (ContinueToNextInstruction)
+  (label unwindillegalcontinuation)
+    ;;wrong, but temporary for testing
+    (illegal-operand unknown-internal-register)
+  (label unwindillegalcontrol)
+    ;;wrong, but temporary for testing
+    (illegal-operand unknown-internal-register)
+  (label unwindillegalFP)
+    ;;wrong, but temporary for testing
+    (illegal-operand unknown-internal-register)
+  (label unwindillegalLP)
+    ;;wrong, but temporary for testing
+    (illegal-operand unknown-internal-register)
+  (label cpwriteexc)
+    (illegal-operand unknown-internal-register))
+
+
+;;; Microsecond clock support
+
+;;;---*** TODO: THIS APPEARS TO BE UNUSED!
+#||
+(define-fast-subroutine |GetRPCC| (arg1 arg2) (R0)
+    ;;---*** TODO: WHAT"S THE REPLACEMENT?
+    ;(RPCC T1)
+    (sldi arg1 T1 0)
+    (ADD arg1 T1 arg1)
+    (srdi T1 arg1 32))
+||#
+
+(define-fast-external-subroutine |SpinWheels| (arg1) (R0)
+    (load-constant arg1 #x2000000)
+  (label spinwheelaxis)
+    (ADDI arg1 arg1 -1)
+    (branch-if-greater-than-zero arg1 spinwheelaxis))
+
+
+(comment "Fin.")

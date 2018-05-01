@@ -1,0 +1,100 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+(comment "This file implements the out-of-line parts of the instruction dispatch loop.")
+
+;(include "alphamac")	; load the alpha macros
+;(include "intrpmac")   ; load the interpreter macros.
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+
+(passthru ".globl SUSPENDMACHINE")
+(passthru ".globl ILLEGALINSTRUCTION")
+(passthru ".globl HALTMACHINE")
+
+(define-procedure |iOutOfLine| ()
+
+    ;; The following must not clobber T2, or ARG3 if it takes the
+    ;; branch back to CONTINUECURRENTINSTRUCTION
+  (label traporsuspendmachine "Here when someone wants the emulator to trap or stop.")
+    ;; We use a conditional store to clear the suspend/interrupt
+    ;; register.  We don't care if our store fails, that simply means
+    ;; another thread ran and posted an interrupt; in which case we
+    ;; won't have clobbered it and will deal with it next cycle.  If the
+    ;; clear succeeds, we also clear stop_interpreter, since we know
+    ;; that there are no new interrupts and we will handle the current
+    ;; ones in priority order.  There is no sense leaving
+    ;; stop_interpreter set to penalize every branch or go in the
+    ;; interrupt handler.  It also gets reset if there are other pending
+    ;; interrupts or preempts on the next function return (which is the
+    ;; soonest possible time you could deal with them anyways).
+    (get-control-register t4)
+    (STD iSP PROCESSORSTATE_RESTARTSP (ivory) "Be sure this is up-to-date")
+    (li t5 PROCESSORSTATE_PLEASE_STOP)
+    (LDARX R0 t5 ivory "Has the spy asked us to stop or trap?")
+    (clr t6)
+    (STDCX-DOT t6 t5 ivory)
+    (bc 4 2 collision)
+;   #+ignore ;;I think this is the culprit in RGETF hang -- Kalman
+    (stzd PROCESSORSTATE_STOP_INTERPRETER (ivory))
+  (unlikely-label collision)
+    (rotldi R0 R0 32 "Put PLEASE_STOP in lower half, PLEASE_TRAP in upper half")
+    (CMPLI 0 1 R0 |HaltReasonIllInstn| "EQ if we've been asked to stop")
+    (BC 12 2 suspendmachine)
+
+    (comment "Here when someone wants the emulator to trap.")
+    (srdi R0 R0 32 "Extract PROCESSORSTATE_PLEASE_TRAP (ivory)")
+    (srdi t4 t4 30 "Isolate current trap mode")
+    (basic-dispatch R0 t3
+      (|TrapReasonHighPrioritySequenceBreak|
+        (CMPLI 0 1 t4 |TrapModeExtraStack| "Only interrupts EXTRA-STACK and EMULATOR")
+	(bclong 12 1 continuecurrentinstruction)
+	(external-branch highprioritysequencebreak))
+      ;; --- This wouldn't work if we needed it, since high-pri can
+      ;; clobber low-pri; Luckily, we don't use low-pri!
+      (|TrapReasonLowPrioritySequenceBreak|
+	;; (CMPLI 0 1 t4 |TrapModeEmulator| "Only interrupts EMULATOR")
+	;; (bclong 12 1 continuecurrentinstruction)
+	(long-branch-if-nonzero t4 continuecurrentinstruction "Only interrupts EMULATOR")
+	(external-branch lowprioritysequencebreak))
+      (:else
+	(comment "Check for preempt-request trap")
+	(LWA t5 PROCESSORSTATE_INTERRUPTREG (ivory) "Get the preempt-pending bit")
+	;; (CMPLI 0 1 t4 |TrapModeEmulator| "Only interrupts EMULATOR")
+	;; (BC 4 1 dopreemptrequest)
+	(long-branch-if-nonzero t4 continuecurrentinstruction "Don't take preempt trap unless in emulator mode")
+	(ANDI-DOT R31 t5 1 "BLBC")
+	(bclong 12 2 continuecurrentinstruction "Jump if preempt request not pending")
+	(external-branch preemptrequesttrap)))
+
+  (label suspendmachine "Here when someone wants to stop the emulator.")
+    (clrldi t1 R0 32 "Get the reason")
+    (B stopinterp)
+
+  (label illegalinstruction "Here if we detect an illegal instruction.")
+    (li t1 |HaltReasonIllInstn|)
+    (B stopinterp)
+
+  (label haltmachine "Here to halt machine")
+    (li t1 |HaltReasonHalted|)
+    (B stopinterp)
+
+  (label fatalstackoverflow "Here if we detected a fatal stack overflow")
+    (li t1 |HaltReasonFatalStackOverflow|)
+    (B stopinterp)
+
+  (label illegaltrapvector "Here if we detected a non-PC in a trap vector")
+    (li t1 |HaltReasonIllegalTrapVector|)
+    (B stopinterp)
+
+  (label stopinterp)
+    ;; cleanup and leave! here +++ save interpreter state!
+    (mov arg1 t1 "Return the halt reason")
+    (stzw PROCESSORSTATE_PLEASE_STOP (ivory) "Clear the request flag")
+    (decache-ivory-state)
+    (STD R31 PROCESSORSTATE_RUNNINGP (ivory) "Stop the (emulated) chip")
+    (LD SP PROCESSORSTATE_IINTERPRET_SP (ivory) "Pop back to iInterpret's stack frame")
+    (elf-epilogue)
+)
+
+;;; End of ihalt

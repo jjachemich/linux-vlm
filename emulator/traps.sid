@@ -1,0 +1,53 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+(define-values |TrapVector| 
+  ;; The post traps
+  (|StackOverflow| #o5103)
+  (|InstructionException| #o4000)
+  (|ArithmeticInstructionException| #o0)
+  
+  ;; The pre traps
+  (|Error| #o5100)
+  (|Reset| #o5101)
+  (|PullApplyArgs| #o5102)
+  (|Trace| #o5104)
+  (|PreemptRequest| #o5105)
+  (|LowPrioritySequenceBreak| #o5110)
+  (|HighPrioritySequenceBreak| #o5111)
+  (|DBUnwindFrame| #o5126)
+  (|DBUnwindCatch| #o5127)
+
+  ;; The memory traps
+  (|Transport| #o5106)
+  (|Monitor| #o5112)
+  (|PageNotResident| #o5120)
+  (|PageFaultRequest| #o5121)
+  (|PageWriteFault| #o5122)
+  (|UncorrectableMemoryError| #o5123)
+  (|MemoryBusError| #o5124)
+  (|DBCacheMiss| #o5125))
+
+
+;; This matches the order of the above, but the values are different
+(define-values |TrapMeter| 
+  (|StackOverflow| 0)
+  (|InstructionException| 1)
+  (|ArithmeticInstructionException| 2)
+  (|Error| 3)
+  (|Reset| 4)
+  (|PullApplyArgs| 5)
+  (|Trace| 6)
+  (|PreemptRequest| 7)
+  (|LowPrioritySequenceBreak|  8)
+  (|HighPrioritySequenceBreak| 9)
+  (|DBUnwindFrame| 10)
+  (|DBUnwindCatch| 11)
+  (|Transport| 12)
+  (|Monitor|   13)
+  (|PageNotResident|  14)
+  (|PageFaultRequest| 15)
+  (|PageWriteFault|   16)
+  (|UncorrectableMemoryError| 17)
+  (|MemoryBusError| 18)
+  (|DBCacheMiss|    19)
+  (|NEntries| 20))

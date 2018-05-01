@@ -1,0 +1,862 @@
+@device(LGP2)
+
+@device(lgp2)
+
+@style(date "8 March 1952")
+@pageheading(Left "VLM",Center "DRAFT - @value(date)", Right "@value(page)")
+@pagefooting(Center "Symbolics Confidential")
+
+
+@begin(majorheading)
+Virtual Lisp Machine Project
+
+Program Plan
+
+Draft @value(date)
+@end(majorheading)
+
+@begin(enumerate)
+Introduction
+
+Background
+
+Goals
+
+Marketing
+
+Implementation
+
+Staffing
+
+Milestones
+
+Futures
+@end(enumerate)
+
+@heading(Introduction)
+This document presents a skeleton of the Program Plan for the
+Virtual Lisp Machine (VLM) Project.  It includes general background
+information, program goals, marketing approach, project plans,
+and projected future directions.  Because project planning is still
+in preliminary stages, detailed plans and revision of staffing
+and milestone projections are expected. In addition, the marketing
+plans are also subject to significant revision.
+
+This draft should be viewed as the opening round of a dialogue to be conducted
+via this document.  Comments, revisions, additions, deletions and corrections
+are all welcome as the program plan is fleshed out.
+
+@newpage
+@heading(Background)
+The Virtual Lisp Machine (VLM) Project is a port of the Genera
+OS/Software Development Environment (SDE) to one or more standard
+hardware architectures with standard operating systems, via a
+software implementation of the Ivory instruction processor.  The
+inevitable loss of performance due to software implementation of
+the Ivory architecture is intended to be partially compensated 
+by the use of a very high performance 64 bit architecture.  In
+addition, we expect to gain a significant advantage in cost of the
+port and time to market by avoiding a very costly port of Genera to
+a native lisp environment utilizing a standard lisp compiler.
+After the initial port, by providing native support for parts of
+Genera, great improvement in performance can be achieved.  This includes
+core Genera if ported to a native lisp compiler, but even more easily
+includes things like disk and network I/O and window system
+performance.
+
+More than one decade after its introduction by Symbolics, Genera
+is still the premier software development environment.  Genera OS
+also has some powerful features (including advanced memory management
+and reclamation, as well as a rich and featurefull file system) that
+set Genera apart from standard operating systems accepted today.  There is very
+little indication that any group has both the knowledge and intent
+to supersede Genera's SDE.  However, the raw performance of simpler
+SDE functionality on standard architectures and operating systems, combined with
+starkly lower costs has already significantly eroded Genera's market
+share.  In the near future, raw performance alone will be enough to
+render Genera inferior to SDE's that will still be function for function
+inferior to Genera.  Symbolics is no longer able to compete effectively
+in the chip design arena, against competitors like Intel, IBM, DEC,
+HP, Sun, and Motorola.  Even if Symbolics could continue to compete in
+this arena in terms of performance, the recurring costs of chip re-spins
+and new designs, as well as the limited proprietary nature of the chip,
+would result in little or no return on investment.  If, however, Genera
+could be ported to one or more popular standard architectures, a number
+of immediate and eventual benefits would be realized.
+
+Firstly, Genera could compete more effectively against inferior, but
+standard-based SDEs.  The lifetime of Genera would be significantly
+extended because its platform would be significantly less proprietary,
+and because improvement in performance would come almost for free with
+performance improvements in the underlying standard architecture.  The
+increase in basic life expectancy would make investment in Genera
+reasonable, with the expectation that such further investment would
+improve the product lifetime still further.  Finally, the goal of making
+Symbolics a software company could be realized.
+
+Porting the Genera SDE to a native lisp implementation is the `right' choice
+from a purely engineering perspective.  This approach maximizes the
+performance and portability of Genera, two highly desirable advantages.
+However, such a port must immediately grapple with difficult problems
+related to either abandoning Genera's OS component, and its SDE advantages,
+or finding a way to implement expanded OS services from a standard OS.
+There is significant risk that the first product wouldn't get the OS
+component right.  In addition, such a port is enormously expensive.  In
+the past, Symbolics viewed the expense as prohibitive (but it is one of the
+things that we could have and should have done), currently it is genuinely
+impossible for Symbolics to make an investment on that scale.
+It is worth mentioning here, that a port to a native lisp would certainly
+involve language and OS changes that would break all current customer code.
+    
+The alternative we have selected is to port Genera to a software Ivory
+instruction interpreter.  Clearly, this approach is less costly.  Also,
+the first version can faithfully render the Genera OS and its benefits.
+In addition, the product can be anything from software only to a
+Symbolics built workstation, giving management more flexibility in
+structuring the difficult transition to a software only strategy.
+Performance can be gradually improved by porting from interpreter
+dependence to dependence on native code.  Simultaneously, gradual 
+solution of the problem of Genera's OS features can be realized,
+resulting in the gradual reduction of Symbolics' burden in supporting
+an OS.  Thus the expensive and risky parts of the port described
+above can be realized during the life of the ported product, and the
+costs can be distributed over the product life, rather than incurred at the
+beginning and amortized.  All of these advantages can only be realized
+if the first version of the port can be made sufficiently fast.
+
+Early studies of the potential performance of an Ivory interpreter have
+suggested that given an interpreter coded specifically to take advantage
+of chip specific architecture, including on-chip memory management,
+suitable 64 bit risc chips clocked at 66 to 200 Mhz could achieve
+performance in the range of the XL400 to XL1200.  Slightly smaller
+clock rates could be accommodated if multiple effective instructions
+could be issued per clock cycle.  Our marketing intuition is that a
+minimum of XL400 performance is needed in order to have a viable
+product, though XL1200 level performance is clearly preferable.
+During the life of the chip revision supporting the initial port,
+performance can be improved through a number of software techniques.
+Later revisions of the chip architecture will provide further
+improvements in performance.  It should also be noted that given 
+acceptable performance on at least one popular chip architecture,
+alternate versions on less powerful processors, providing for example
+a 3640 level of performance, could be a successful low-end, lower
+cost version of Genera.
+
+Since the resulting interpreter is chip specific, Genera is limited
+to run on architectures for which an interpreter has been written,
+and for which a suitable OS/life-support mechanism is supported.
+From a performance standpoint, the only currently available architectures
+which can support at least XL400 performance are the Intel I860,
+the MIPS R4000, and the DEC Alpha.  IBM and SUN have announced that
+64 bit, high speed versions of their Power and SPARC architectures will
+soon be available.  These are expected to be able to support at least
+XL400 performance.  The Intel P5 chip is probably borderline in terms
+of expected performance.  Of the currently available suitable chips,
+DEC Alpha is the most promising from both a raw performance and
+market acceptability standpoint.  The future of the MIPS R4000
+architecture, outside of Silicon Graphics workstations, is unclear.
+Although the I860 has been very successful in the realm of graphics
+and floating-point co-processors, almost all of its workstation
+design wins are no longer viable.
+
+
+@newpage
+@heading(Goals)
+The overall goal of the project is to provide product revenue
+at or above current levels during a period of transition to
+software only products.  In order to accomplish this, it is
+necessary to extend the life of Genera with a supportable investment,
+thus allowing the transition to a software and
+services company.  Extending the life of Genera means preventing (and
+possibly reversing) the erosion in Genera's customer base, and providing
+sufficient product revenue to stabilize the product side of the business.
+
+Advantages of this approach include:
+@begin(itemize)
+Removes obstacles to sales (proprietary chip and OS)
+
+Tracks industry chip performance curve
+
+Focuses technical staff on SDE
+
+Removes dependence on proprietary HW, OS
+
+Incremental approach to software only
+
+Retains connection with Ivory, current products -- smoother transition
+@end(itemize)
+
+The following prioritized goals are intended to achieve this effect:
+
+@begin(enumerate)
+At least XL400 performance in the product.
+
+PR for direction supports Ivory sales in the interim.
+
+FCS in June of 1993 or as soon thereafter as possible.
+
+XL1200 Window System performance or better, FCS.
+
+Runs existing customer code with at most a recompile at FCS.  (Automatic
+  conversion is ok).
+
+Recognizable as Genera, FCS.
+
+Genera runs under the native OS, allows native processes to run concurrently. (But
+  not necessarily at FCS).
+
+Preserve Genera OS advantages, consistent with previous goal.
+
+XL1200 large scale program performance, or as close to it as possible, FCS.
+
+XL1200 benchmark performance, or as close to it as possible, FCS.
+
+Portability of VLM to other hardware/OS platforms.
+@end(enumerate)
+
+@newpage
+@heading(Marketing)
+One of the advantages of the VLM approach to a software only
+strategy is that the marketing will be only marginally different
+than that needed for our current products.  Unfortunately, our
+current marketing practices don't quite measure up to those marketing
+needs.  Still, we derive a significant advantage from not having to completely
+rethink fundamental aspects of the marketing plan.
+
+@subheading(The Market)
+We currently market a proprietary hardware supported Lisp SDE with
+a proprietary OS.  Our customers are R&D groups in universities,
+national laboratories, government agencies and contractors, commercial
+and industrial organizations; and product and service deployment groups
+in government agencies and commercial organizations.  For several years
+we have restricted ourselves to marketing within our original customer
+base, thus marketing only to those groups who are already aware of the
+benefits of using the Genera SDE.  We can segment the market into three
+groups: current customers, former customers, and non-customers.  Our
+primary goal with VLM products is to prevent erosion of the first segment.
+A secondary goal is to regain customers who have left the fold.  Only
+by significantly changing and enhancing features of the current product,
+as well as completely revamping our marketing approach, can we hope to
+more than trivially penetrate the third segment.  Thus, at least in its
+initial form, the VLM product(s) will not address genuine expansion to new
+markets.
+
+The most significant and growing segment of our current customers are
+among commercial and industrial organizations with the need to deploy
+information systems that radically improve the efficiency of their
+operations.  This portion of our market is characterized by the relatively
+high level of complexity of the problem, and segments naturally along
+vertical industry lines.  Our largest and best customers come from
+telecommunications, transportation (airlines), manufacturing, utility,
+and finance.  However, nothing in the VLM program directly addresses the
+needs of marketing to these vertical industries, except the general need
+to reduce costs and the proprietary nature of the hardware and OS in
+our products.
+
+@subheading(Positioning)
+
+Positioning this product for sales within the current customer base is quite
+simple.  This is the product that Genera's future resides with.  This is the
+product whose performance will improve to beyond XL1200 capacity, and which will allow
+software only delivery of Genera based applications.  No more trying to convince
+one's boss that it is ok to buy proprietary hardware from Symbolics.
+
+The same story could work for some of our `lost boys' if they really departed
+unwillingly and solely because of platform issues. However, it is much more likely
+that to mount a serious `lost boys' recovery program, we will have to identify and
+position ourselves against the competition.  In some cases this will be Sparcstations
+running Lucid or Franz Common Lisp.  In other cases we will be competing against
+C++ on Sparcstations or other Unix boxes.  To position against either of these we have
+safe code,
+better GC, better memory management in general, better large-scale program development
+utilities, better SDE, and huge bodies of reusable code.
+
+If not at FCS, certainly within one year of FCS there will be native Alpha Lisps
+available.  Consequently, the interpreter based VLM will be outstripped for
+delivery performance, and stressed with respect to performance issues for
+development.  We should be prepared to position VLM Genera as a development
+environment with delivery on a native lisp as an option.  In addition, on the
+technical side we will be trying to replace the Ivory interpreter with native
+Alpha code as quickly as possible.
+ 
+@subheading(Product Families)
+We envision a high end product family, characterized by (eventually)
+greater than XL1200 performance, on very fast deskside and desktop
+workstations, using the fastest 64 bit standard chips.  Genera will
+run as a high priority process (or collection of processes) under the
+native OS.  Native processes will be able to run concurrently, so
+the user will be able turn from Genera in an X or Motif or Win32 window, to
+another program running in another such window.  These products will
+run on a very limited number of different architectures, e.g. Alpha
+and possibly either SPARC or Power.  Which architectures are selected
+will depend on marketing analysis and strategic relations.
+Within this product family, we will enhance the power and functionality
+of Genera, and retain our leadership in providing software development
+environments.  By providing substrate to support development in other
+languages, and concentrating on high level language independent tools,
+we will expand the market potential for these products beyond those
+groups who are tolerant of development in Lisp.
+ 
+We also envision a lower end product family, characterized by lower
+performance, and possibly less OS integration, available on lower
+performance desktop workstations based on the same chips as the above
+family, and also including the Intel P series, beginning with P5.
+
+A third product family will involve Genera-based applications, targeted
+at our vertical markets.
+
+@subheading(Sales)
+
+It is assumed that sales will continue to be through our direct sales force.
+Many new possibilities open up through our relationship with DEC.  We should
+pursue the possibility of using our own or DEC's resources to mount a telemarketing
+campaign into our population of `lost boys'.
+
+@subheading(Promotion)
+
+@b(???)
+
+@newpage
+@heading(Implementation)
+The Genera VLM port will be accomplished by providing two software
+platforms to support the only slightly modified Genera code: the
+Ivory Instruction Interpreter and the OSF/1 Genera Life Support.
+@begin(verbatim)
+
+
+                    ________________
+                    |   Genera     |
+                    ________________
+                     /           \
+    ______________________    ________________
+    |  Ivory Interpreter |    | Life Support |
+    ______________________    ________________
+                     \           /
+                    ________________
+                    |    OSF/1     |
+                    ________________
+                           |
+                           |
+                    ________________
+                    |    Alpha     |
+                    ________________
+
+@end(verbatim)
+
+@subheading(Ivory Interpreter)
+The Ivory Interpreter will be comprised of three main segments:
+the kernel including instructions and instruction dispatch,
+the memory management services, and the communications interface.
+The communications and memory architecture segments will be written
+in ANSI C for portability.  We believe that acceptable performance will
+result.  The kernel will be coded in Alpha OSF/1 assembler, to maximize
+performance of the interpreter.  Also, to improve performance, the
+kernel will support use of native on-chip memory management, rather than
+faithfully emulate Ivory memory management.  The kernel code will thus
+also have to provide a suitable interface for storing and retrieving
+ephemeral reference information for Genera's GC.  
+
+The memory architecture implemented in the kernel
+will support instruction and data read and write,
+and mapping of virtual Genera addresses to physical memory.
+Because Alpha traps on non-word aligned reads, we will be unable to use
+a straightforward packed representation.  At some cost in initial
+performance, but with offsetting gains in real-program performance,
+we will use a packed representation with tags stored separately from
+data.  Trade-offs will be examined to determine the optimal relative
+locations for tags and data.  If sufficient non-locality is chosen
+for tags, Genera data structures can more easily be exchanged with
+untagged data structures (i.e. data structures for other languages).
+
+Additional interpreter kernel issues are providing compatibility with
+Ivory trap signalling, and consideration of floating point instructions.
+
+The memory management services are responsible for allocation and
+management of OSF/1 memory used to implement the Ivory address space.
+An issue here is investigation of whether locking of VLM's memory
+should be used.
+
+The communications module will support and interface with the
+Genera Life Support Module.
+
+Testing the core set of instructions will involve running relatively
+small Ivory programs (via a ported version of the Minima remote debugger)
+that provide complete coverage of Ivory instructions.  Later testing, as well
+as tuning, will be done using Genera as the test environment.
+
+@subheading(Life Support)
+Life support will be patterned after the life support mechanisms for
+the Sun embedding, the Silicon Graphics embed project, and to a
+lesser extent the MacIvory embedding.  Life support provides a layer
+between Genera's interface to device drivers and the underlying OS,
+in this case OSF/1.  There are several interesting design decisions
+that remain to be decided, all of which have significant implications
+for this layer:
+
+@begin(itemize)
+level of support for FEPFS, LMFS
+
+level of support for Generic Network
+
+level of support for Genera UI
+@end(itemize)
+
+Currently, Solstice life support provides a full FEPFS implementation within
+a single UNIX file.  The VLM implementation will utilize the
+UNIX file system more directly, with layering of some additional
+functionality including direct support for LMFS.  The network support
+will be done as it is currently done for Solstice.  Later, we may wish to
+utilize the network services of OSF/1 more directly.  The best long term answer
+for UI is to re-host Genera
+tool interfaces to CLIM 2.0, ported to Motif running under OSF/1.
+Alternatively, the interfaces could be ported to X-based CLIM 2.0.
+A third alternative, less attractive but possibly less time
+consuming for the initial release would be a re-hosting of DW directly
+onto X, rather than using the sheet window system.  All three
+approaches result in abandoning the sheet window system and the
+tv-windows substrate, making a rather abrupt change to no
+longer supporting old-style interfaces.
+
+The current decisions are to implement what gets us to
+FCS fastest, and to plan re-implementing some features to derive
+better performance or support characteristics for a future release.
+One possible exception is to try to improve UI performance for
+FCS, by improving the X hosting of the sheet window system.
+
+The major pieces of the life support effort are:
+@begin(itemize)
+basic embedding code, including signals, timers, memory layout, and initialization.
+
+disk I/O channel
+
+network channel
+
+cold load channel
+@end(itemize)
+
+@subheading(Port of Genera)
+
+In some sense the port of Genera is the simple part, because we have designed the
+two supports (Ivory Interpreter and Life Support) to minimize the work required
+in Genera itself.  However, this part of the work will also be the most person-power
+extensive, since it also constitutes the system integration work of putting our
+three modules together with OSF/1 running on the Alpha.
+
+The major tasks identified to date are work on the Ephemeral GC, system-case
+specialization, support for loading the FEP (i.e. C code to replace boot ROM and device PROM
+support), and debugging effort.  Additional efforts may be made to improve the UI performance.
+
+@newpage
+@heading(Staffing)
+
+Below we present a sketch of staffing requirements.
+
+@begin(comment)
+Analysis and planning - 1 mo PR, 2 mo RL.
+Ivory Interpreter     - 4 mo PR
+Layered Products      -
+  Portable Statice    - 24 mo Gmbh, 6 mo JW, 6 mo NF
+@end(comment)
+
+@subheading(Preliminary Work)
+@begin(verbatim)
+Analysis and Planning -  3 Person Months
+________________________________________
+Total                 -  3 Person Months
+@end(verbatim)
+
+@subheading(Ivory Interpreter)
+
+@begin(verbatim)
+Design & prep        - 12 person weeks       - done
+Instructions         -  6 to 18 person weeks - done
+Instruction dispatch -  2 person weeks       - done
+Memory Management    -  1 to 4 person weeks  - done
+Trap signalling      -  2 to 8 person weeks  - partially done
+Memory init          -  1 to 2 person weeks  - done
+Communication        -  2 to 4 person weeks  - done
+Testing              -  4 to 8 person weeks  - partially done
+Debugging            -  2 to 6 person weeks
+_________________________________________________
+Total                - 32 to 64 person weeks
+                     -  8 to 16 person months
+
+1 person 12 months
+P Robertson
+8 to 16 PM
+@end(verbatim)
+
+@subheading(Genera Life Support)
+
+@begin(verbatim)
+Design               -  2 to 4 person weeks  - done
+Basic Support Code   -  2 to 4 person weeks  - done
+Disk Channel         -  1 person week        - done
+Cold load channel    -  2 person weeks       - done
+Network Channel      -  2 to 8 person weeks  - partially done
+_________________________________________________
+Total                -  9 to 19 person weeks
+                     -  2 to 5 person months
+
+2 people for 2.5 months
+G Palter, J Anderson, D Tenny
+2 to 5 PM
+@end(verbatim)
+
+@subheading(Port of Genera)
+
+@begin(verbatim)
+FEP loading          -  3 to 5 person weeks  - done
+FEP port             -  2 to 4 person weeks  - done
+Modify Ephemeral GC  -  4 to 8 person weeks  - partially done
+Platform support     -  2 to 8 person weeks  - partially done
+Boot                 -  4 person weeks
+Run Genera           -  8 to 32 person weeks
+Debug Genera         -  8 to 32 person weeks
+Tune                 -  6 to 12 person weeks
+_________________________________________________
+Total                -  37 to 101 person weeks
+                     -  9 to 25 person months
+
+2 persons for 2.5 months, plus 4 people for 5 months.
+P Withington
+G Palter
+S Mckay
+D Tenny
+9 to 26 person months
+@end(verbatim)
+
+@subheading(Documentation and QA)
+
+@begin(verbatim)
+Doc - 1 person for 6 months.
+QA  - 2 persons for 3 to 6 months.
+T Stratis
+J Lown
+C Anderson
+12 to 18 PM
+@end(verbatim)
+
+@begin(comment)
+@subheading(Port of Layered Products: Statice, Concordia, Joshua)
+
+4 people 18 Months devo
+1 person 6 months doc
+1 person 6 months QA
+NF
+JGA
+JW
+tbd
+TS
+CA
+60 PM
+@end(verbatim)
+@end(comment)
+
+@subheading(Costs)
+
+We can estimate the actual cost of Genera Senior Developers at $125K per
+person year. The following chart summarizes the staffing estimates above.
+The cost figure is based on the pessimistic staffing/task estimates, and
+is in approximate agreement with original (24 month old) estimates on
+project cost.
+
+@begin(verbatim)
+Analysis     3       PM
+Interpreter  8 to 16 PM
+Life Support 2 to  5 PM
+Genera       9 to 26 PM
+QA, Doc     12 to 18 PM
+___________________________________
+            34 to 68 PM
+
+5.7 Person years @ $125,000 = $708,000
+@end(verbatim)
+
+@newpage
+@heading(Milestones)
+
+The following milestones are based on the optimistic versions of the staffing
+plans and tasks, above.
+
+@begin(verbatim)
+@begin(b)
+D,#TD1PsT[Begin using 006 escapes](1 0 (NIL 0) (NIL :BOLD NIL) "CPTFONTCB")            Virtual Lisp Machine project schedule (preliminary)
+                         ** Company Confidential **
+0@end(b)
+
+@begin(i)
+(2 0 (NIL 0) (NIL :ITALIC NIL) "CPTFONTI")! = important milestone, must be met at or near the specified date
+* = date at risk due to possible hard-to-foresee difficulties
+n = new or revised milestone
+
+Task                                          Completion  Personnel0     2Status
+                                                 date
+0@end(i)
+
+Get VLM debugger for C-emulator working       11/13/92    Judy          Done 11/13
+
+Get C-emulator working again to verify        11/13/92    Judy          Done 11/13
+ that the VLM debugger works
+
+Get C-based emulator working on Beta          11/20/92    PTW           Done 12/2
+
+Run Boyer benchmark on C-emulator on Beta,    11/20/92    PTW           Done 12/9
+ and get benchmark numbers
+
+Run experiments to determine that mmap        11/20/92    Judy,PTW      Done 12/1
+ and munmap will satisfy our needs for the
+ emulator storage system
+
+Glue VLM debugger to asm-emulator             11/23/92    Judy          Done 12/1
+
+Get KHS instruction tests to run to           11/25/92    PTW           Done 12/4
+ completion on C-based emulator (doesn't
+ have to pass completely)
+
+Get initial asm-emulator running on Beta,     11/25/92    Paul          Punted 12/7
+ and get initial benchmarks for instruction
+ decoding and a few basic instructions (TAK)
+
+Get console life support working              11/25/92    Judy          Done 12/8
+
+Life support core working                     11/25/92    Gary          Done 12/8
+
+Get disk life support working                 12/02/92    Gary          Done 12/14
+
+"Hello world" on Beta			      12/04/92    Gary,Judy     Done 12/9
+
+Start bring up IFep under C-emulator          12/04/92    PTW,Judy,Gary Done 12/9
+ to debug console and disk life support
+
+Asm-emulator runs Boyer benchmark             12/11/93!   Paul          Done 12/18 (~XL800)
+
+IFep mostly works under C-emulator            12/11/93!   Judy,Gary     Done 1/5
+
+Research and experimentation on using         12/25/92    PTW           Done 12/7
+ native memory management to do PHT
+ (using C-emulator as the testbed)
+
+Bring up Minima under C-emulator              01/01/93    PTW,Gary      Punted 1/5
+ to debug network life support
+ (acceptable if no GC)
+
+Bring up IFEP under asm-emulator              01/05/93!   Gary,PTW,SWM  Done 2/1
+
+Start investigations on removing              01/15/93    SWM           Done 1/15
+ unnecessary bottlenecks from the sheet
+ window system, by calling into X at
+ a higher level
+
+New machine type, file type, and world        01/15/93    Bob,SWM       Done 2/2
+ load type for the VLM; SCT support
+
+Investigate alternative world load            01/29/93    Gary          Done 1/29
+ format to improve performance of booting
+ and paging from world load (this requires
+ doing "world tools" in C)
+
+Unix-style command interface to start         02/05/93n    Gary
+ up the VLM (takes arguments that augment
+ data gotten from any config files)
+
+Asm-emulator passes most instruction tests    02/12/93n   PTW,SWM       Done 2/26
+
+Bring up Minima under asm-emulator            02/12/93!n  Gary,PTW,SWM  Done 2/26
+ (acceptable if no GC)
+
+Get network life support working              02/19/93*   Tenny,Gary
+
+Convert IFEP debugger into IFEP kernel        02/19/93n   Eric,Gary
+
+Start designing, implementing RPC so          02/19/93    Tenny,Gary
+ that users can call out to OSF-1
+
+Fix Genera Memory Management to use           02/26/93*n  PTW
+native Alpha Memory Management
+
+Genera sources conditionalized for VLM        02/19/93    Bob,SWM
+ machine type in order to eliminate all
+ code not needed by the VLM
+
+Genera hobbles along under asm-emulator       02/26/93!n  Gary,PTW
+ (using native PHT, but acceptable if no GC)
+
+Emulator passes all instruction tests,        02/26/93n   PTW,SWM
+ including all traps
+
+Genera works reasonably well                  03/19/93n   Everyone
+ (GC starting to work with native PHT)
+
+Alternative world load format installed,      03/19/93    Gary
+ if investigations are successful
+
+Asm-interpreter substantially tuned           03/29/93n   Paul
+             
+Genera's sheet window system now calls        03/29/93*n  SWM,Bob
+ into X windows at a higher level
+
+Genera's sheet window system now calls        03/29/93*n  SWM,Bob
+ into X Windows via an embedded channel
+
+Documentation effort under way                04/02/93    (Doc)
+
+Kit design under way                          04/02/93    Carl
+
+Draft Alpha, QA, and Beta Plans written       04/09/93n   Watkins
+
+Basic RPC support implemented                 04/09/93n   Tenny,Gary
+
+LMFS/DBFS w/o FEPFS + Host file channel       04/09/93n   Gary
+
+Genera works well, including GC               04/26/93!*n Everyone
+
+Translator written, interfaced to asm         04/26/93n   Paul
+interpreter
+
+In-house Alpha testing and QA started         04/26/93n   (QA)
+
+Continue doing performance work               04/30/93    Everyone
+ - tune emulator, extend implementation                   - Paul
+   to do more before trapping out
+ - tune memory management, paging, and GC                 - PTW
+ - tune disk and network life support                     - Gary,Tenny
+ - identify Genera translation targets                    - Paul,Bob
+
+Benchmarks translated and run                 05/07/93n   Bob
+
+Genera 8.4 Feature Freeze                     05/07/93n   
+
+Beta1 software ships                          05/28/93!
+
+Genera 8.4 Final Freeze                       07/16/93n
+
+FCS                                           08/27/93!
+@end(verbatim)
+
+@newpage
+@heading(Futures)
+
+@subheading(Subsequent Releases of VLM)
+
+The major goals for the second release of VLM, scheduled for 4 to 5 months after the
+initial release, are performance and robustness improvements.  We will drop the
+requirement of supporting older code, particularly in the UI area, and be willing
+to make more significant departures from current Genera and life support technology
+to improve window system and I/O performance.  We will attempt to better address
+issues of large-scale production program performance.  A third release of VLM will
+most likely center on porting to a new, lower-cost platform.  The lowest-cost port
+would be to the DEC Alpha PC.
+
+@begin(itemize)
+@tabclear
+@tabdivide(3)
+Release 1.0@\~XL800 Performance, high compatibility@\August 1993  
+
+Release 2.0@\> XL1200 Performance, More modern UI@\December 1993
+
+Release 2.0@\~XL800 Performance, < $10K workstation@\June 1993  
+@end(itemize)
+
+@subheading(Performance)
+
+There are several things we can do to improve the performance of the
+VLM:
+
+@begin(itemize)
+OS support for I/O
+
+UI speed improvements
+
+Tuning interpreter
+
+Translator improvements to interpreter
+
+Native compiler/runtime
+@end(itemize)
+
+Efforts can be made to speed disk and network I/O, by going more directly
+to OSF/1. There are numerous marketing and design issues here, related to the
+degree to which we integrate with OSF/1 capabilities.
+
+Several ideas for improving UI performance were discussed earlier,
+but one further idea would be to
+consider providing a C-based substrate for CLIM 2.0 on top of
+OSF/1 Motif and X directly.  This substrate would implement
+shared data-structures and native code for CLIM's graphics 
+model and output recording.  While display and redisplay
+would be handled by CLIM, replay and graphics drawing would be
+handled by the substrate.
+
+The highest payoff general performance improvement for a small investment,
+is augmenting the Ivory Interpreter with a translator.  The translator will
+convert portions of Ivory binaries to Alpha code, as a post compilation process.
+The interpreter will be modified to expect this `escape to Alpha' code.  For
+small programs, that won't suffer too much from the resulting binary code bloat,
+will run approximately 5 times faster.  However, larger programs can be metered and
+small but key portions translated for significant performance improvements.
+This effort will be the major aspect of the performance enhancement VLM 2.0
+release.
+
+Changes to the Lisp compiler to support Alpha can range from defining new
+Ivory codes that have better interpreter performance (such as combined code
+sequences), to actually generating native Alpha code in some instances.  Of
+course, the greatest speed improvements will come from porting Genera from
+the interpreter to a native Lisp.
+
+@subheading(Other Platforms)
+One obvious and interesting platform is porting to the DEC Alpha PC running
+Windows NT.  This will involve little or no changes to the interpreter, it
+is simply a port of VLM life support.   Windows NT for the most part provides
+functionality similar to OSF/1.  This should be the key aspect of the third release
+of VLM, for summer of 1994.  The chief attraction of this port is that the Alpha
+PC is slated to be available for under $10,000.
+
+Another possibility is to port the interpreter to Intel's Pentium.  Given the
+translator, and previous port to Windows NT for Alpha, this port shouldn't be
+too expensive, and the performance, while not great, should be acceptable.
+
+Porting Genera to a modern compiler with a retargetable back-end is certainly preferable
+from the standpoint of performance and technical longevity, but is also considerably
+more expensive (perhaps an order of magnitude more expensive).  The advantage of this
+port, however, is that Genera could be made to run with credible performance (i.e.
+XL1200 level) on Intel 486 platforms (of which there will be tens of millions).
+
+@subheading(Appearance)
+
+Several changes should be made to improve the appearance of Genera.  It should
+shed its old fashioned look, and take on a fresh new appearance.  Of course,
+rewriting all the user interfaces in Motif-based CLIM 2.0 will do a lot to
+improve things, but it is still the case that basic UI design for many of
+Genera's tools could be radically re-thought.  Basic re-thinking involves
+considering where more graphical interfaces might be appropriate, for
+example, and where and how the desktop metaphor might be used. KMP's desktop like
+approachability work might be worth reviving here.
+
+@subheading(Unbundling)
+
+We should give consideration to the need to unbundle our software, in order to make
+more attractive pricing alternatives possible.  This will involve not only re-thinking
+modularity boundaries, but also possibly taking on projects to provide minimal
+capabilities, so that more advanced capabilities in a necessary area (like networking)
+can be reasonably unbundled.
+
+@subheading(Daughter of Genera)
+
+The VLM platform should be the platform in which we conduct the work to
+develop the DOG technology (because this will be our strongest platform, and
+the one we know we will be able to invest in).  As mentioned above, among
+the goals for this technology are providing substrate to support development in other
+languages, and concentrating on high level language independent tools. Also
+involved will be moving away from the file/text based approach to data in our
+development environment, to a truly object (and persistent object) based approach.
+
+@subheading(Getting New Customers)
+
+Certainly many of the properties of the DOG technology will help us to attract
+new customers.  However, we need to also think about more short term things we might
+do, both technically and in terms of marketing to address new customers.  For a
+couple of years now we have been saying that we want to build upon the successes of
+providing solutions to key customers.  In fact, within the contract and consulting arena
+we have done just that.  It is now time to figure out how to derive similar
+benefits with new customers with our product business.

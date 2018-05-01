@@ -1,0 +1,410 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+;(include-header "ifunhead.s")
+
+(comment "The most commonly used instructions, part 2.")
+
+;;; The functions in this file are pretty much in order of usage count for
+;;; a set of representative "benchmarks" (compiler, window system, UI).
+;;; The exception to the ordering is that sometimes short procedures are
+;;; placed just before another longer one that will be tail-called, in
+;;; order to get better instruction fetching behavior.
+
+;;; From IFUNINST.PPCS
+
+;; This really only takes an 8-bit immediate
+(define-instruction |DoPushInstanceVariable| :10-bit-immediate (:own-immediate t)
+    (mov arg1 arg2)			;need arg2 in arg1 since arg2 is "vma"
+    (with-multiple-memory-reads (t9 t10 t11 t12)
+      (locate-instance-variable-mapped arg1 arg2 IVBadMap IVBadInst IVBadIndex PushIVException
+				       arg5 arg6 t1 t2 t3 t4 t5 t6 t7 t8 t)
+
+      (memory-read arg2 arg5 arg6  PROCESSORSTATE_DATAREAD t5 t6 t7 t8 nil t))
+    (GetNextPCandCP)
+    (stack-push2 arg5 arg6 t7)
+    (ContinueToNextInstruction-NoStall))
+
+
+;;; From IFUNMATH.PPCS
+
+;; Really this is :operand-from-stack-immediate, but we can save some
+;; crucial cycles by doing the loads here inline
+(define-instruction |DoAdd| :operand-from-stack (:own-immediate t :needs-tos t)
+    (simple-binary-arithmetic-operation add ADD FADDS DoAddOvfl)
+  (immediate-handler |DoAdd|)
+    (simple-binary-immediate-arithmetic-operation |DoAdd| ADD nil DoAddOvfl))
+
+
+;;; From IFUNBLOK.PPCS
+
+(define-instruction |DoBlock3Write| :operand-from-stack-signed-immediate ()
+    (LWA arg3 PROCESSORSTATE_BAR3+4 (ivory))
+    (ADDI arg2 ivory PROCESSORSTATE_BAR3)
+    (B |BlockWrite|))
+
+
+;;; From IFUNARRA.PPCS
+
+;;; arg1, on stack=array
+;;; arg2, operand =index
+
+(define-instruction |DoAset1| :operand-from-stack-immediate (:own-immediate t)
+    (stack-pop2 arg3 arg4 "Get the array tag/data")
+    (stack-pop2 t5 t6 "Get the new value tag/data")
+    (exts arg2 arg1 32 "arg2=signextend(arg1)")
+    (li t8 |AutoArrayRegMask|)
+    (AND t8 arg4 t8)
+    ;(sldi t8 t8 #.|AutoArrayRegShift|)		; mask is in place, so shift is zero.
+    (srdi arg1 arg1 32 "Index Tag")
+    (ADDI t7 ivory PROCESSORSTATE_AC0ARRAY)
+    (ADD t7 t7 t8 "This is the address if the array register block.")
+    (CheckDataType arg1 |TypeFixnum| Aset1Illegal t1 t)
+  (label aset1merge)
+    (branch-if-zero arg4 |Aset1Regset|) ;+++
+    (LD t8 ARRAYCACHE_ARRAY (t7) "Cached array object.")
+    ;; Array or String
+    (CheckAdjacentDataTypes arg3 |TypeArray| 2  ReallyAset1Exc t1 t)
+    (XOR t8 arg4 t8 "t8==0 iff cached array is ours.")
+    (branch-true t8 |Aset1Regset| "Go and setup the array register.")
+    (passthru "#ifdef SLOWARRAYS")
+    (B |Aset1Regset|)
+    (passthru "#endif")
+    ;; Get control register, base, and length.  Don't need any data types
+    ;; since we checked all that when we set up the array register.
+    (LD arg6 ARRAYCACHE_ARWORD (t7))
+    (LD t9   ARRAYCACHE_LOCAT (t7) "high order bits all zero")
+    (LD t3   ARRAYCACHE_LENGTH (t7) "high order bits all zero")
+    (clrldi t11 arg6 #.(- 64 |ArrayRegisterEventCountSize|))
+    (LD t4 PROCESSORSTATE_AREVENTCOUNT (ivory))
+    ;; (check-array-bounds arg2 t3 Aref1Bounds t2)
+    (SUBF t12 t11 t4)
+    (branch-if-nonzero t12 |Aset1Regset| "J. if event count ticked.")
+    (CMPL 0 1 arg2 t3)
+    (bclong 4 0 aset1bounds)
+    (srdi arg5 arg6 #.|ArrayRegisterBytePackingPos|)
+    (srdi t8 arg6 #.|ArrayRegisterElementTypePos|)
+    (srdi arg4 arg6 #.|ArrayRegisterByteOffsetPos|)
+    (ANDI-DOT arg5 arg5 |ArrayRegisterBytePackingMask|)
+    (ANDI-DOT arg4 arg4 |ArrayRegisterByteOffsetMask|)
+    (ANDI-DOT arg6 t8 |ArrayRegisterElementTypeMask|)
+  (label Aset1Restart)
+    (aset-1-internal arg3 t9 arg5 arg4 arg6 arg2 t5 t6  t1 t2 t3 t4 t7 t8 arg1)
+  (immediate-handler |DoAset1|)
+    (li t8 |AutoArrayRegMask|)
+    (stack-pop2 arg3 arg4 "Get the array tag/data")
+    (ADDI t7 ivory PROCESSORSTATE_AC0ARRAY)
+    (AND t8 arg4  t8)
+    ;(sldi t8 t8 #.|AutoArrayRegShift|)
+    (ADD t7 t7 t8 "This is the address of the array register block.")
+    (stack-pop2 t5 t6 "Get the new value tag/data")
+    (B aset1merge))
+
+(define-instruction |DoFastAref1| :operand-from-stack (:needs-tos t)
+    (stack-read2 iSP arg3 arg4 :tos-valid t :signed t)
+    (CheckDataType arg3 |TypeFixnum| fastaref1iop t1)
+  (label FastAref1Retry)
+    ;; Get control register, base, and length.  Don't need any data types
+    ;; since we checked all that when we set up the array register.
+    (LWA arg6 4 (arg1))
+    (LWA t9  12 (arg1))
+    (LWA t3  20 (arg1))
+    (clrldi arg6 arg6 32)
+    (clrldi t9 t9 32)
+    (clrldi t5 arg6 #.(- 64 |ArrayRegisterEventCountSize|))
+    (clrldi t3 t3 32)
+    (LD t4 PROCESSORSTATE_AREVENTCOUNT (ivory))
+    ;; (check-array-bounds arg4 t3 fastaref1bounds t2)
+    (CMPL 0 1 arg4 t3)
+    (BC 4 0 fastaref1bounds)
+    (SUBF t6 t5 t4)
+    (branch-if-nonzero t6 |Aref1RecomputeArrayRegister|)	;branches back to FastAref1Retry
+    (srdi t6 arg6 #.|ArrayRegisterBytePackingPos|)
+    (srdi t7 arg6 #.|ArrayRegisterByteOffsetPos|)
+    (srdi t8 arg6 #.|ArrayRegisterElementTypePos|)
+    (ANDI-DOT t6 t6 |ArrayRegisterBytePackingMask|)
+    (ANDI-DOT t7 t7 |ArrayRegisterByteOffsetMask|)
+    (ANDI-DOT t8 t8 |ArrayRegisterElementTypeMask|)
+    (new-aref-1-internal arg5 t9 t6 t7 t8 arg4 t1 t2 t3 t4 t5)
+  (label fastaref1iop)
+    (illegal-operand fast-array-access-type-check)
+  (label fastaref1bounds)
+    (illegal-operand array-register-format-error-or-subscript-bounds-error))
+
+
+;;; From IFUNLIST.PPCS
+
+(define-instruction |DoRplaca| :operand-from-stack-signed-immediate (:needs-tos t)
+    (with-multiple-memory-reads (t9 t10 t11 t12)	;must be the same as in |DoRplacd|
+      (stack-pop2 t1 arg2 "Read ARG1, the list" :tos-valid t)
+      (TagType t1 t3)
+      (ADDI t4 t3 #.(- |type$K-list|))			;t4=0 if list, t4=4 if locative
+      (rotrdi t4 t4 2)					;t4=0 if list, t4=1 if locative
+      (clrrdi t4 t4 1)					;t4=0 iff list or locative
+      (long-branch-if-nonzero t4 RplacaException)	;in |OutOfLineExceptions|
+    (label |RplacStore|)
+      (srdi t2 arg1 32 "Tag for t2")
+      (clrldi arg1 arg1 32 "data for t2")
+      (store-contents arg2 t2 arg1 PROCESSORSTATE_DATAWRITE  arg5 arg6 t5 t6 t7 t8
+		      NextInstruction)
+      (ContinueToNextInstruction)))
+
+(define-memory-subroutine |MemoryReadWrite|
+  (arg2 arg5 arg6 PROCESSORSTATE_DATAWRITE t5 t6 t7 t8)
+  (t9 t10 t11 t12)
+  (r0))
+
+(define-instruction |DoRplacd| :operand-from-stack-signed-immediate (:needs-tos t)
+    (with-multiple-memory-reads (t9 t10 t11 t12)	;must be the same as in |DoRplaca|
+      (stack-pop2 t1 arg2 "Read ARG1, the list" :tos-valid t)
+      (TagType t1 t3)
+      (ADDI t4 t3 #.(- |type$K-locative|))
+      (branch-if-zero t4 |RplacStore|)
+      (ADDI t4 t3 #.(- |type$K-list|))
+      (long-branch-if-nonzero t4 RplacdException)	;in |OutOfLineExceptions|
+      (memory-read arg2 arg5 arg6 PROCESSORSTATE_CDR t5 t6 t7 t8 nil t)
+      (TagCdr arg5 arg5)
+      (ADDI arg5 arg5 #.(- |cdr$K-normal|)) 
+      (long-branch-if-nonzero arg5 RplacdException "J. if CDR coded")
+      (ADDI arg2 arg2 1 "address of CDR") 
+      (B |RplacStore|)))
+
+;;; From IFUNLOOP.PPCS
+
+(define-instruction |DoBranchTrueAndExtraPop| :10-bit-signed-immediate
+    (:own-immediate t :needs-tos t)
+    (ibranchcond nil t nil t |BranchException|))	;and-pop extra-pop
+
+(define-instruction |DoBranchFalseAndExtraPop| :10-bit-signed-immediate
+    (:own-immediate t :needs-tos t)
+    (ibranchcond t t nil t |BranchException|))		;invert and-pop extra-pop
+
+(define-instruction |DoBranchTrueAndNoPop| :10-bit-signed-immediate
+    (:own-immediate t :needs-tos t)
+    (ibranchcond nil nil t nil |BranchException|))	;else-pop
+
+(define-instruction |DoBranchFalseAndNoPop| :10-bit-signed-immediate
+    (:own-immediate t :needs-tos t)
+    (ibranchcond t nil t nil |BranchException|))	;invert else-pop
+
+(define-instruction |DoBranchFalseElseNoPop| :10-bit-signed-immediate
+    (:own-immediate t :needs-tos t)
+    (ibranchcond t t nil nil |BranchException|))	;invert and-pop
+
+
+;;; From IFUNPRED.PPCS
+
+;; Handles DoEqualNumberNoPop as well
+(define-instruction |DoEqualNumber| :operand-from-stack (:own-immediate t :needs-tos t)
+    (simple-binary-arithmetic-predicate 
+      equal-number SUBF 4 2 t 1 12 t |EqualNumberMMExc|) ;FCMP yields CR.EQ
+  (immediate-handler |DoEqualNumber|)
+    (simple-binary-immediate-arithmetic-predicate
+      equal-number SUBF 4 2 t))
+
+
+;;; From IFUNLIST.PPCS
+
+(define-instruction |DoSetToCdrPushCar| :operand-from-stack ()
+    ;; (isettocdrpushcar arg1  t1 t2 arg5 arg6 arg2 t4 t3 arg3 arg4 t5 t6 t7 t8)
+    (with-multiple-memory-reads (t9 t10 t11 t12)
+      (stack-read2 arg1 t1 t2 "Get the operand from the stack.")
+      (ANDI-DOT t3 t1 192 "Save the old CDR code")
+      (ADDI t5 t1 #.(- |type$K-locative|))
+      (ANDI-DOT t5 t5 63 "Strip CDR code")
+      (branch-if-zero t5 settocdrpushcarlocative)
+      #+list-inline (carcdr-internal t1 t2 arg5 arg6 set-to-cdr-push-car arg2 t5 t6 t7 t8 t)
+      #-list-inline (call-subroutine |CarCdrInternal|)
+      (TagType arg5 arg5)
+      (OR arg5 arg5 t3 "Put back the original CDR codes")
+      (stack-write2 arg1 arg5 arg6)
+      (stack-push2 t1 t2 t5)
+      (ContinueToNextInstruction)
+      ))
+
+;;; From IFUNMATH.PPCS
+
+;; Same deal as |DoAdd|...
+(define-instruction |DoSub| :operand-from-stack (:own-immediate t :needs-tos t)
+    (simple-binary-arithmetic-operation sub SUBF FSUBS DoSubOvfl)
+  (immediate-handler |DoSub|)
+    (simple-binary-immediate-arithmetic-operation |DoSub| SUBF nil DoSubOvfl))
+
+
+;;; From IFUNSUBP.PPCS
+
+;; Really this is :operand-from-stack-immediate, but we can save some
+;; crucial cycles by doing the loads here inline
+(define-instruction |DoTag| :operand-from-stack (:provide-immediate t)
+    (GetNextPC)
+    (stack-read-tag arg1 arg1 "Get the tag of the operand")
+    (GetNextCP)
+    (stack-push-ir-reverse |TypeFixnum| arg1 t3)
+    (ContinueToNextInstruction-NoStall)
+)
+
+
+;;; From IFUNPRED.PPCS
+
+;; Really operand-from-stack-immediate, but save cycles loading own operand
+(define-instruction |DoEndp| :operand-from-stack (:own-immediate t)
+    (Get-NIL t1)
+    (stack-read-tag arg1 arg2 "Get tag.")
+    (Get-T t2)
+    (TagType arg2 arg2)
+    (ADDI t6 arg2 #.(- |type$K-NIL|) "Compare")
+    (branch-if-nonzero t6 endpnotnil)
+  ;(label endpt)
+    (GetNextPCandCP)
+    (stack-push-with-cdr t2)
+    (ContinueToNextInstruction-NoStall)
+  (label endpnil)
+    (GetNextPCandCP)
+    (stack-push-with-cdr t1)
+    (ContinueToNextInstruction-NoStall)
+  (label endpnotnil)
+    (ADDI t6 t6 -1 "Now check for list")		;DTP-LIST = DTP-NIL + 1 (yow!)
+    (branch-if-zero t6 endpnil)
+    (ADDI t6 arg2 #.(- |type$K-listinstance|))
+    (branch-if-zero t6 endpnil)
+  (immediate-handler |DoEndp|)			;silly really
+    (illegal-operand one-operand-list-type-error))
+
+;; Really operand-from-stack-immediate, but save cycles loading own operand
+(define-instruction |DoMinusp| :operand-from-stack (:own-immediate t)
+    (simple-unary-arithmetic-predicate minusp 4 0 12 0) ; CMOVLT test is LT
+  (immediate-handler |DoMinusp|)
+    (Get-NIL t1)
+    (exts arg2 arg2 8 "Turned into a signed number")	; Uses EXTSB
+    (Get-T t2)
+    (ADDI iSP iSP 8)
+    (GetNextPCandCP)
+    (CMPI 0 1 arg2 0)
+    (BC 4 0 skip21 "B.GE")
+    (mov t1 t2)
+   (unlikely-label skip21)
+    (stack-write iSP t1)
+    (ContinueToNextInstruction-NoStall))
+
+;; Really operand-from-stack-immediate, but save cycles loading own operand
+(define-instruction |DoPlusp| :operand-from-stack (:own-immediate t)
+    (simple-unary-arithmetic-predicate plusp 4 1 12 1)	; CMOVGT test is GT
+  (immediate-handler |DoPlusp|)
+    (Get-NIL t1)
+    (exts arg2 arg2 8 "Turned into a signed number")	; Uses EXTSB
+    (Get-T t2)
+    (ADDI iSP iSP 8)
+    (GetNextPCandCP)
+    (CMPI 0 1 arg2 0)
+    (BC 4 1 skip18 "B.LE")
+    (mov t1 t2)
+  (unlikely-label skip18)
+    (stack-write iSP t1)
+    (ContinueToNextInstruction-NoStall))
+
+
+;;; From IFUNPRED.PPCS
+
+;; Handles DoLesspNoPop as well
+(define-instruction |DoLessp| :operand-from-stack (:own-immediate t :needs-tos t)
+    (simple-binary-arithmetic-predicate
+      lessp SUBF 4 0 t 4 12 t |LesspMMExc|) ;FCMP yields CR.LT
+  (immediate-handler |DoLessp|)
+    (simple-binary-immediate-arithmetic-predicate
+      lessp SUBF 4 0 t))
+
+
+;;; From IFUNMATH.PPCS
+
+(define-instruction |DoDecrement| :operand-from-stack ()
+    (stack-read2 arg1 arg2 arg3 "read tag/data of arg1")
+    (type-dispatch arg2 t1 t2
+      (|TypeFixnum|
+	(LD t2 PROCESSORSTATE_MOSTNEGATIVEFIXNUM (ivory))
+	(ADDI t3 arg3 -1)
+	(XOR t2 arg3 t2)				;overflow if most-negative-fixnum
+	(long-branch-false t2 DecrementException)	;in |OutOfLineExceptions|
+	(GetNextPCandCP)
+	(stack-write2 arg1 arg2 t3)
+	(ContinueToNextInstruction-NoStall))
+      (|TypeSingleFloat|
+	(with-floating-exception-checking (DecrementException t2)
+	  ;(CheckFloatingOverflow arg3 DecrementException t2)
+	  (LFS f1  4 (arg1) "Get the floating data")
+	  (LFS f2  PROCESSORSTATE_SFP1 (ivory) "constant 1.0")
+	  (FSUBS f0 f1 f2))
+	(GetNextPCandCP)
+	(STFS f0  4 (arg1) "Put the floating result")
+	(ContinueToNextInstruction-NoStall))
+      (:else 
+	(B DecrementException))))
+
+
+;;; From IFUNSUBP.PPCS
+
+(define-instruction |DoMergeCdrNoPop| :operand-from-stack (:needs-tos t)
+    (GetNextPCandCP)
+    (stack-read-tag arg1 t1 "Get the CDR CODE/TAG of arg2")
+    (stack-read-tag iSP t2 "Get the CDR CODE/TAG of arg1" :tos-valid t)
+    (force-alignment)
+    (ANDI-DOT t2 t2 #xC0 "Get Just the CDR code in position")
+    (ANDI-DOT t1 t1 #x3F "Get the TAG of arg1")
+    (OR t3 t1 t2 "Merge the tag of arg2 with the cdr code of arg1")
+    (STW t3 0 (arg1) "Replace tag/cdr code no pop")
+    (ContinueToNextInstruction-NoStall))
+
+
+;;; From IFUNPRED.PPCS, by way of IFUNCOM1.PPCS
+
+(define-procedure |DoEqImmediateHandler| ()
+  (immediate-handler |DoEq|)
+    (exts arg2 arg2 8)
+    (stack-read2 iSP t4 t3 "t4=tag t3=data" :signed t)
+    (srdi arg3 arg3 #.(+ 10 2))
+    (Get-NIL t11)
+    (TagType t4 t4)
+    (Get-T t12)
+    (ANDI-DOT arg3 arg3 1 "1 if no-pop, 0 if pop")
+    (SUBF arg2 arg2 t3)
+    (XORI t4 t4 |TypeFixnum|)
+    (sldi t5 arg3 3)
+    (ADD iSP t5 iSP "Either a stack-push or a stack-write")
+    (GetNextPC)
+    (OR t4 arg2 t4)
+    (GetNextCP)
+    (CMPI 0 1 t4 0)
+    (BC 4 2 skip7 "B.NE")
+    (mov t11 t12)
+   (unlikely-label skip7)
+    (stack-write iSP t11)
+    (ContinueToNextInstruction-NoStall))
+
+
+;;; From IFUNMATH.PPCS
+
+(define-instruction |DoIncrement| :operand-from-stack ()
+    (stack-read2 arg1 arg2 arg3 "read tag/data of arg1")
+    (type-dispatch arg2 t1 t2
+      (|TypeFixnum|
+	(LD t2 PROCESSORSTATE_MOSTPOSITIVEFIXNUM (ivory))
+	(ADDI t3 arg3 1)
+	(XOR t2 arg3 t2)				;overflow if most-positive-fixnum
+	(long-branch-false t2 IncrementException)	;in |OutOfLineExceptions|
+	(GetNextPCandCP)
+	(stack-write2 arg1 arg2 t3)
+	(ContinueToNextInstruction-NoStall))
+      (|TypeSingleFloat|
+	(with-floating-exception-checking (IncrementException t2)
+	  ;(CheckFloatingOverflow arg3 IncrementException t2)
+	  (LFS f1  4 (arg1) "Get the floating data")
+	  (LFS f2  PROCESSORSTATE_SFP1 (ivory) "constant 1.0")
+	  (FADDS f0 f1 f2))
+	(GetNextPCandCP)
+	(STFS f0  4 (arg1) "Put the floating result")
+	(ContinueToNextInstruction-NoStall))
+      (:else 
+	(B IncrementException))))
+
+
+(comment "Fin.")

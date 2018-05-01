@@ -1,0 +1,115 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+;(include-header "ifunhead.s")
+
+(comment "Data movement.")
+
+;; |DoPush|, |DoPop|, and |DoMovem| are in IFUNCOM1.PPCS
+
+
+(define-instruction |DoPushNNils| :operand-from-stack-immediate (:own-immediate t)
+    (clrldi arg2 arg1 32 "Get the data")
+    (srdi t1 arg1 32 "and the tag")
+    (CheckDataType t1 |TypeFixnum| pushnnbadop t5)
+  (immediate-handler |DoPushNNils|)
+    (stack-cache-overflow-check t1 t2 t3 t4 t5 iSP arg2)
+    (Get-NIL arg6)
+    (B pushnnilsl2)
+  (label pushnnilsl1)
+    (stack-push-with-cdr arg6 "Push NIL")
+    (ADDI arg2 arg2 -1)
+  (unlikely-label pushnnilsl2)
+    (branch-if-greater-than-zero arg2 pushnnilsl1)
+    (ContinueToNextInstruction)
+  (label pushnnbadop)
+    (illegal-operand one-operand-fixnum-type-error))	;+++ hmm
+
+
+;; |DoPushAddress| is in IFUNCOM1.PPCS
+
+
+;; |DoSetSpToAddress| and |DoSetSpToAddressSaveTos| are in IFUNCOM1.PPCS
+
+
+(define-instruction |DoPushAddressSpRelative| :operand-from-stack-immediate ()
+    (LD t4 PROCESSORSTATE_RESTARTSP (ivory) "SP before any popping")
+    (srdi t1 arg1 32)
+    (clrldi arg1 arg1 32)
+    (LD t6 PROCESSORSTATE_STACKCACHEBASEVMA (ivory) "Base of the stack cache")
+    (LD t7 PROCESSORSTATE_STACKCACHEDATA (ivory) "THe stack cache data block")
+    (type-dispatch t1 t2 t3
+      (|TypeFixnum|
+        (sldi arg1 arg1 3)
+	(ADDI arg1 arg1 8)
+	(SUBF t5 arg1 t4 "Compute stack relative pointer")
+	;; +++ SCAtoVMA ?
+	(SUBF t5 t7 t5 "Index into stack data")
+	(srdi t5 t5 3 "Convert to word index")
+	(ADD t5 t6 t5 "Convert to an ivory word address")
+	(GetNextPCandCP)
+	(stack-push-ir |TypeLocative| t5 t6)
+	(ContinueToNextInstruction-NoStall))
+      (:else 
+	(illegal-operand one-operand-fixnum-type-error))))
+
+;;+++ Should signal STACK-BLT-TYPE-ERROR if arguments are not locatives
+(define-instruction |DoStackBlt| :operand-from-stack-immediate ()
+    (stack-pop2 t2 t3 "Destination locative")
+    (clrldi t1 arg1 32)
+    (VMAtoSCA t1 arg1 t4)
+    (LD t4 PROCESSORSTATE_STACKCACHEBASEVMA (ivory) "Base of the stack cache")
+    (LD t5 PROCESSORSTATE_STACKCACHETOPVMA (ivory) "End ofthe stack cache")
+    (LD t1 PROCESSORSTATE_STACKCACHEDATA (ivory) "THe stack cache data block")
+    (SUBF t6 t4 t3 "BAse of Stack Cache.")
+    (SUBF t7 t5 t3 "Top of Stack Cache.")
+    (branch-if-less-than-zero t6 stkbltexc "J. if vma below stack cache")
+    (branch-if-greater-than-or-equal-to-zero t7 stkbltexc "J. if vma above stack cache")
+    (sldi t6 t6 3)
+    (ADD t6 t1 t6 "Compute the stackcache address")
+    (B stkbltloopend)
+  (label stkbltloop)
+    (ADDI arg1 arg1 8 "Advance Source")
+    (ADDI t6 t6 8 "Advance destination")
+  (unlikely-label stkbltloopend)
+    (stack-read arg1 t1 "Read a word from the source")
+    (SUBF t4 iSP arg1)
+    (stack-write t6 t1 "copy the word")
+    (branch-if-nonzero t4 stkbltloop "J. if sourse not stack top")
+    (mov iSP t6 "Update the SP to point at the last written location")
+    (ContinueToNextInstruction)
+  (label stkbltexc)
+    (illegal-operand stack-blt-type-error))
+
+;;; arg1 = ARG2 = FROM address
+;;; tos  = ARG1 = TO
+(define-instruction |DoStackBltAddress| :operand-from-stack ()
+    (stack-pop2 t2 t3 "Destination locative")
+    (LD t4 PROCESSORSTATE_STACKCACHEBASEVMA (ivory) "Base of the stack cache")
+    (LD t5 PROCESSORSTATE_STACKCACHETOPVMA (ivory) "End ofthe stack cache")
+    (LD t1 PROCESSORSTATE_STACKCACHEDATA (ivory) "THe stack cache data block")
+    (SUBF t6 t4 t3 "Base of Stack Cache.")
+    (SUBF t7 t5 t3 "Top of Stack Cache.")
+    (branch-if-less-than-zero t6 stkbltadrexc "J. if vma below stack cache")
+    (branch-if-greater-than-or-equal-to-zero t7 stkbltadrexc "J. if vma above stack cache")
+    (sldi t6 t6 3)
+    (ADD t6 t1 t6 "Compute the stackcache address")
+    (B stkbltaddloopend)
+  (label stkbltaddloop)
+    (ADDI arg1 arg1 8 "Advance Source")
+    (ADDI t6 t6 8 "Advance destination")
+  (unlikely-label stkbltaddloopend)
+    (stack-read arg1 t1 "Read a word from the source")
+    (SUBF t4 iSP arg1)
+    (stack-write t6 t1 "copy the word")
+    (branch-if-nonzero t4 stkbltaddloop "J. if sourse not stack top")
+    (mov iSP t6 "Update the SP to point at the last written location")
+    (ContinueToNextInstruction)
+  (label stkbltadrexc)
+    (illegal-operand stack-blt-type-error))
+
+
+(comment "Fin.")
+
+

@@ -1,0 +1,216 @@
+
+D,#TD1PsT[Begin using 006 escapes](1 0 (NIL 0) (NIL :BOLD NIL) "CPTFONTCB")		     Comments on the Ivory Emulator
+
+
+(2 0 (NIL 0) (NIL :ITALIC NIL) "CPTFONTI")General comments
+
+(3 0 (NIL 0) (NIL NIL :VERY-SMALL) "EINY7")When to sign extend vs. when not to sign extend: it looks like we need to avoid
+sign extension when we have address quantities, but we must sign extend when we
+have integer quantities.  I don't think the code is careful enough about this.
+
+Do we do anything about the TOS register?  It looks like we don't need to.
+
+0----
+2alphamac.lisp
+
+0----
+2intrpmac.lisp
+
+3Flush commented-out call to MULQ in PC-TO-iCACHEENT.
+
+Flush ADDRESS-TO-iCACHEENT, iPC-TO-iCACHEENT, and iCACHELOOKUP since nobody uses
+them any more.
+
+0----
+2memoryem.lisp
+
+3MEMORY-READ, MEMORY-READ-VMA, MEMORY-READ-G, and MEMORY-READ-CDR should share
+some underlying macro.  This macro should not generate writes into the ZERO
+register (that is, if it does write into ZERO, that means that the caller
+wanted to just ignore that value -- see LOCATE-INSTANCE-VARIABLE-MAPPED and
+LOCATE-ARBITRARY-INSTANCE-VARIABLE).
+
+Need to write OLMRACTION and TRANSPORTTRAP for the memory-read functions.
+
+Nobody uses MEMORY-READ-CDR, so fix it or flush it.
+
+Doesn't MEMORY-WRITE need to write into the stack-cache (4 0 (NIL 0) (NIL :ITALIC :VERY-SMALL) "EINY7")and3 the real VM, instead
+of just into the stack cache?
+
+0----
+2stacklis.lisp
+
+0STACK-WRITE-NIL and STACK-WRITE-T take a VMA argument.  Is it really a VMA, or
+is it a stack-cache address (SCA)?  Looks like an SCA.
+
+In fact, most of the macros in this file that have a VMA argument really take an
+SCA.  The arglists should be fixed.
+
+Should STACK-READ-DATA do an EXTLL to un-sign-extend the data word?  May not be
+worth it, but there should be better comments here.
+
+3Why do some things do (ADDQ iSP 8 (iSP)), whereas others do (ADDQ iSP 8 iSP)?
+
+0----
+2idispat.as
+
+0What about that clever cache-filling code that stopped at the ends of functions,
+accounted for condition branches, etc?
+
+3Flush the trap-handling tags that are no longer in use, and the code that goes
+with them.
+
+0----
+2ifunarra.as and imacarra.lisp
+
+0Microcode ensures that array register event count is a fixnum.  That provides
+some extra robustness, but do we care?
+There should be a READ-ARRAY-HEADER macro for use by DoAref1, DoAset1, and
+DoAloc1.  (minor)
+
+There should be a macro that writes the bodies of DoArrayLeader,
+DoStoreArrayLeader, and DoAlocLeader.  (minor)
+
+3Bounds-checking is done using an unsigned comparison in the microcode; does the
+right thing happen in the emulator?
+
+In the microcode, AREF pops the top two elements on the stack and pushes the
+result.  FAST-AREF just replaces the top element.  It looks correct, but does
+the emulator really maintain the proper stack discipline?
+
+DoAref1, DoAset1, and DoAloc1 need to ensure that the index is a fixnum.
+
+When recomputing an array register, the microcode can take a "recompute trap"
+that needs to know whether the recompute was forced by FAST-AREF or FAST-ASET.
+
+The microcode ARRAY-LEADER and STORE-ARRAY-LEADER instructions seem to take
+some kind of a transport trap when they see forwarding pointers (?) in the
+array leader.  What about the emulator?
+
+0----
+2ifunbind.as and imacbind.lisp
+
+3Don't think we need to worry about deep-bound-p...
+
+Not convinced that UNBIND needs to check the interrupt register each time around
+the loop either.
+
+I don't really like the fact that UNBIND clears the cleanup bit every time it
+undoes a single binding on behalf of DoUnbindN.  Really DoUnbindN should check
+it and signal an error if it is not set, then do the unbindings, and finally
+clear the cleanup bit.
+
+0----
+2ifunbits.as and imacbits.lisp
+
+3Aren't the tag and data already in separate registers once we get into functions
+like DoLogAnd?  It sort of looks like ILOGICAL is doing a little too much work
+up front, but I'm not sure.  On second thought, ILOGICAL is probably doing the
+right amount of work, but it's making a lot of assumptions about the contents of
+various registers.
+
+0----
+2ifunblok.as and imacblok.lisp
+
+0I%BLOCK-N-READ-SHIFT should probably do (EXTLL ,TEMP2 0 ,TEMP2), just like
+I%BLOCK-N-READ and I%BLOCK-N-WRITE do.  And what's with the commented-out stuff
+in I%BLOCK-N-READ that isn't commented out of I%BLOCK-N-READ-SHIFT?
+And... I%BLOCK-N-READ-SHIFT doesn't shift!
+
+ReadAlu instructions not done.
+
+ReadTest instructions not done.
+
+----
+2ifunbnum.as
+
+3DoDivideBignumStep not done.
+
+0----
+2ifunfcal.as and fcallmac.lisp
+
+3START-CALL-ESCAPE not done.
+
+Typo in START-CALL-DISPATCH?  Lexical closure case calls START-CALL-COMPILED
+instead of START-CALL-LEXICAL-CLOSURE.
+
+START-CALL-LEXICAL-CLOSURE not done.
+
+0----
+2ifunfext.as
+
+0----
+2ifunfull.as
+
+3The PushSparePointer instructions are not done.
+
+CallGeneric and CallGenericPrefetch not done.
+
+0----
+2ifungene.as
+
+3DoGenericDispatch not done.
+
+DoMessageDispatch not done.
+
+0----
+2ifuninst.as and imacinst.lisp
+
+0----
+2ifunjosh.as and imacjosh.lisp
+
+0DoUnify not done.
+
+----
+2ifunlexi.as and imaclexi.lisp
+
+0----
+2ifunlist.as and imaclist.lisp
+
+3Fill in something for ALLOW-SEQUENCE-BREAK, otherwise DoMember, DoAssoc, and
+DoRgetf can get into an uninterruptable loop on circular lists.  (This brings up
+the question of whether we are implementing the "too long" trap handler -- I
+think we need to, otherwise one Lisp process stuck in DoMember will monopolize
+the entire VLM.)
+
+IRPLAC only needs to read the cdr code.
+
+0----
+2ifunloop.as and imacloop.lisp
+
+0----
+2ifunmath.as and imacmath.lisp
+
+3Not only is the call to (EXTLL arg1 0 arg1 "Strip out tag bits") unnecessary in
+SIMPLE-BINARY-MINMAX, it may well be harmful.  Don't we need a real sign
+extended quantity for MIN/MAX comparisons to work properly?
+
+Doesn't SIMPLE-BINARY-ARITHMETIC-OPERATION lose when the args are signed?  ARG1
+would seem to have both tag and data in it (set by DEFINE-INSTRUCTION-PROCEDURE),
+and ARG4 gets a zero-extended word put in it.  Is it safe to do stuff as a
+32-bit quantity in a 64-bit register?  That may make it hard to detect overflow.
+
+DoQuotient, DoCeiling, DoFloor, DoTruncate, DoRound, DoRemainder, etc., have
+the same problem as the above, I suspect.
+
+How are fixnum overflows detected?  Need to trap for bignums...
+
+0----
+2ifunmove.as
+
+0----
+2ifunpred.as and imacpred.lisp
+
+3SIMPLE-BINARY-ARITHMETIC-PREDICATE and SIMPLE-UNARY-ARITHMETIC-PREDICATE should
+handle the single-float cases.
+
+0----
+2ifunsubp.as and imacsubp.lisp, and imacialu.lisp
+
+0I%ALLOCATE-BLOCK doesn't handle the structure case properly, and doesn't seem to
+hack areas, either.
+
+----
+2ifuntrap.as and imactrap.lisp
+
+

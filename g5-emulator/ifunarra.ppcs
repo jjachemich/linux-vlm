@@ -1,0 +1,373 @@
+;;; -*- Mode: LISP; Syntax: Common-Lisp; Package: ALPHA-AXP-INTERNALS; Base: 10; Lowercase: T -*-
+
+;(include-header "aihead.s")
+;(include-header "aistat.s")
+;(include-header "ifunhead.s")
+
+(comment "Array operations.")
+
+
+;; |DoAref1| and |DoAset1| are in IFUNCOM2.PPCS
+;; The following is all of their out-of-line code
+
+(define-procedure |Aref1Regset| ()
+    (mov t12 arg4)
+    (memory-read arg4 arg5 arg6 PROCESSORSTATE_HEADER t1 t2 t3 t4 nil nil)
+    (check-array-header-and-prefix arg5 arg6 Aref1Illegal |Aref1Exception| t1 t2)
+    ;; What we are about to do is strictly wrong -- but it works.  If the
+    ;; memory read moved the array, we put the array into the WRONG register,
+    ;; and then use it.  next time through, it will miss (because we put it
+    ;; in the wrong place), and the miss code will fix it up.  It's better
+    ;; than slowing down the common case with a check.
+    (STW t12 ARRAYCACHE_ARRAY+4 (t7) "store the array")
+    (li t2 |ArrayLengthMask|)
+    (AND t1 arg6 t2)				;get array length into t1
+    ;; (check-array-bounds arg2 t1 Aref1Bounds t2)
+    (CMPL 0 1 arg2 t1)
+    (BC 4 0 Aref1Bounds "B. if not arg2<t1")
+    (STD t1 ARRAYCACHE_LENGTH (t7) "store the array length [implicit fixnum]")
+    (srdi t10 arg6 #.|ArrayRegisterBytePackingPos|)
+    (LD t8 PROCESSORSTATE_AREVENTCOUNT (ivory))
+    (sldi t10 t10 #.|ArrayRegisterBytePackingPos|)
+    (ADDI t9 arg4 1)
+    (ADD t10 t10 t8 "Construct the array register word")
+    (STW t10 ARRAYCACHE_ARWORD+4 (t7) "store the array register word [implicit fixnum]")
+    (STD t9  ARRAYCACHE_LOCAT (t7) "store the storage [implicit locative]")
+    (srdi arg5 arg6 #.|ArrayBytePackingPos| "get BP into arg5")
+    ;(srdi arg4 arg6 #.|ArrayRegisterByteOffsetPos|)
+    (srdi arg6 arg6 #.|ArrayElementTypePos| "get element type into arg6")
+    (ANDI-DOT arg5 arg5 |ArrayBytePackingMask|)
+    ;(ANDI-DOT arg4 arg4 |ArrayRegisterByteOffsetMask|)
+    (clr arg4)
+    (ANDI-DOT arg6 arg6 |ArrayElementTypeMask|)
+    (B aref1restart))
+
+(define-procedure |Aref1RecomputeArrayRegister| ()
+    (recompute-array-register arg1 fast-aref-1 t1 t2 t3 FastAref1Retry  t4 t5 t6 t7 t8))
+
+(define-procedure |Aref1Exception| ()
+    ;(B ReallyAref1Exc)
+    (STD arg2 PROCESSORSTATE_SCRATCH0 (ivory) "Just a place to save these values")
+    (STD t7 PROCESSORSTATE_SCRATCH1 (ivory) "Just a place to save these values")
+    (mov t9 t12)				;unforwarded arrayr
+    (mov arg2 arg3)				;atag
+    (mov arg1 arg4)				;adata
+    (mov t4 arg5)				; t4/t3 contains the header
+    (mov t3 arg6)				;
+    (clr t2)					;don't force it!
+    (ADDI iSP iSP 24)
+    (call-subroutine |Setup1DLongArray|)		;long array reg w/o trap!
+    (LD arg2 PROCESSORSTATE_SCRATCH0 (ivory) "Just a place to save these values")
+    (LD t7 PROCESSORSTATE_SCRATCH1(ivory) "Just a place to save these values")
+    (stack-pop2 t5 t1 "Length")
+    (stack-pop t5 "base")
+    (stack-pop t3 "control")
+    (stack-pop2 arg3 t9 "The original array")
+    (ADDI iSP iSP -24)
+    (STD t1 ARRAYCACHE_LENGTH (t7))
+    (STW t3 ARRAYCACHE_ARWORD+4 (t7))
+    (STW t5 ARRAYCACHE_LOCAT+4 (t7))
+    (STW t9 ARRAYCACHE_ARRAY+4 (t7) "store the array")
+    (clrldi t9 t5 32)
+    (XORI t2 t2 |ReturnValueException|)
+    (branch-false t2 ReallyAref1Exc)		; we really need that exception after all!
+    (CMPL 0 1 arg2 t1)
+    (BC 4 0 Aref1Bounds)
+    (srdi arg5 t3 #.|ArrayBytePackingPos| "get BP into arg5")
+    (srdi arg6 t3 #.|ArrayElementTypePos| "get element type into arg6")
+    (srdi arg4 t3 #.|ArrayRegisterByteOffsetPos|)
+    (ANDI-DOT arg5 arg5 |ArrayBytePackingMask|)
+    (ANDI-DOT arg4 arg4 |ArrayRegisterByteOffsetMask|)
+    (ANDI-DOT arg6 arg6 |ArrayElementTypeMask|)
+    ;; Goes back to do (new-aref-1-internal arg3 t9 arg5 arg4 arg6 arg2 t1 t2 t3 t5 t6)
+    (B aref1restart)
+
+  (label ReallyAref1Exc)
+    ;; At this point, we know that the type of ARG2 is fixnum
+    (li arg1 |TypeFixnum|)
+    (SetTag arg1 arg2 t1)
+    (ArrayTypeException arg3 aref-1 t1 (array-access-type-check :binary))
+  (label Aref1Illegal)
+    (illegal-operand (array-access-type-check :binary))
+  (label Aref1Bounds)
+    (stzd ARRAYCACHE_ARRAY (t7))
+    (illegal-operand subscript-bounds-error))
+
+
+(define-procedure |Aset1Regset| ()
+    (mov t12 arg4)
+    (memory-read arg4 arg5 arg6 PROCESSORSTATE_HEADER t1 t2 t3 t4 nil nil)
+    (check-array-header-and-prefix arg5 arg6 aset1illegal |Aset1Exception| t1 t2)
+    ;; What we are about to do is strictly wrong -- but it works.  If the
+    ;; memory read moved the array, we put the array into the WRONG register,
+    ;; and then use it.  next time through, it will miss (because we put it
+    ;; in the wrong place), and the miss code will fix it up.  It's better
+    ;; than slowing down the common case with a check.
+    (STW t12 ARRAYCACHE_ARRAY+4 (t7) "store the array")
+    (li t2 |ArrayLengthMask|)
+    (AND t1 arg6 t2)				;get array length into t1
+    ;; (check-array-bounds arg2 t1 Aref1Bounds t2)
+    (CMPL 0 1 arg2 t1)
+    (BC 4 0 Aset1Bounds)
+    (STD t1 ARRAYCACHE_LENGTH (t7) "store the array length [implicit fixnum]")
+    (srdi t10 arg6 #.|ArrayRegisterBytePackingPos|)
+    (LD t8 PROCESSORSTATE_AREVENTCOUNT (ivory))
+    (sldi t10 t10 #.|ArrayRegisterBytePackingPos|)
+    (ADDI t9 arg4 1)
+    (ADD t10 t10 t8 "Construct the array register word")
+    (STW t10 ARRAYCACHE_ARWORD+4 (t7) "store the array register word [implicit fixnum]")
+    (STD t9  ARRAYCACHE_LOCAT (t7) "store the storage [implicit locative]")
+    (srdi arg5 arg6 #.|ArrayBytePackingPos| "get BP into arg5")
+    ;(srdi arg4 arg6 #.|ArrayRegisterByteOffsetPos|)
+    (srdi arg6 arg6 #.|ArrayElementTypePos| "get element type into arg6")
+    (ANDI-DOT arg5 arg5 |ArrayBytePackingMask|)
+    ;(ANDI-DOT arg4 arg4 |ArrayRegisterByteOffsetMask|)	
+    (clr arg4)
+    (ANDI-DOT arg6 arg6 |ArrayElementTypeMask|)
+    (B aset1restart))
+
+;(align16k)
+
+(define-procedure |Aset1RecomputeArrayRegister| ()
+    (recompute-array-register arg1 fast-aset-1 t1 t2 t3 FastAset1Retry  t4 t5 t6 t7 t8))
+
+(define-procedure |Aset1Exception| ()
+    ;(B ReallyAset1Exc)
+    (STD arg2 PROCESSORSTATE_SCRATCH0 (ivory) "Just a place to save these values")
+    (STD t5 PROCESSORSTATE_SCRATCH1 (ivory) "Just a place to save these values")
+    (STD t6 PROCESSORSTATE_SCRATCH2 (ivory) "Just a place to save these values")
+    (STD t7 PROCESSORSTATE_SCRATCH3 (ivory) "Just a place to save these values")
+    (mov t9 t12)				;unforwarded array
+    (mov arg2 arg3)				;atag
+    (mov arg1 arg4)				;adata
+    (mov t4 arg5)				; t4/t3 contains the header
+    (mov t3 arg6)				;
+    (clr t2)					;don't force it!
+    (ADDI iSP iSP 24)
+    (call-subroutine |Setup1DLongArray|)		;long array reg w/o trap!
+    (XORI t1 t2 |ReturnValueException|)
+    (branch-false t1 reallyaset1exc)		; we really need that exception after all!
+    (LD arg2 PROCESSORSTATE_SCRATCH0 (ivory) "Just a place to save these values")
+    (LD t5 PROCESSORSTATE_SCRATCH1 (ivory) "Just a place to save these values")
+    (LD t6 PROCESSORSTATE_SCRATCH2 (ivory) "Just a place to save these values")
+    (LD t7 PROCESSORSTATE_SCRATCH3 (ivory) "Just a place to save these values")
+    (stack-pop2 t2 t1 "Length")
+    (stack-pop t2 "base")
+    (stack-pop t3 "control")
+    (stack-pop2 arg3 t9 "The original array")
+    (ADDI iSP iSP -24)
+    (STD t1 ARRAYCACHE_LENGTH (t7))
+    (STW t3 ARRAYCACHE_ARWORD+4 (t7))
+    (STW t2 ARRAYCACHE_LOCAT+4 (t7))
+    (STW t9 ARRAYCACHE_ARRAY+4 (t7) "store the array")
+    (clrldi t9 t2 32)
+    (CMPL 0 1 arg2 t1)
+    (BC 4 0 aset1bounds)
+    (srdi arg5 t3 #.|ArrayBytePackingPos| "get BP into arg5")
+    (srdi arg6 t3 #.|ArrayElementTypePos| "get element type into arg6")
+    (srdi arg4 t3 #.|ArrayRegisterByteOffsetPos|)
+    (ANDI-DOT arg5 arg5 |ArrayBytePackingMask|)
+    (ANDI-DOT arg4 arg4 |ArrayRegisterByteOffsetMask|)
+    (ANDI-DOT arg6 arg6 |ArrayElementTypeMask|)
+    (B aset1restart)
+
+  (label ReallyAset1Exc)
+    ;; At this point, we know that the type of ARG2 is fixnum
+    (li arg1 |TypeFixnum|)
+    (SetTag arg1 arg2 t1)
+    (ArrayTypeException arg3 aset-1 t1 (array-access-type-check :three-argument))
+  (label Aset1Illegal)
+    (illegal-operand (array-access-type-check :three-argument))
+  (label Aset1Bounds)
+    (stzd ARRAYCACHE_ARRAY (t7))
+    (illegal-operand subscript-bounds-error))
+
+
+(define-instruction |DoAloc1| :operand-from-stack-immediate (:own-immediate t)
+    (stack-pop2 arg3 arg4 "Get the array tag/data")
+    (clrldi arg2 arg1 32 "Index Data")
+    (srdi arg1 arg1 32 "Index Tag")
+    (CheckDataType arg1 |TypeFixnum| aloc1illegal t1)
+  (label aloc1merge)
+    (CheckAdjacentDataTypes arg3 |TypeArray| 2 aloc1exception t1)
+    (memory-read arg4 arg5 arg6 PROCESSORSTATE_HEADER t1 t2 t3 t4 nil t)
+    (check-array-header-and-prefix arg5 arg6 aloc1illegal aloc1exception t1 t2)
+    (li t2 |ArrayLengthMask|)
+    (AND t1 arg6 t2)				;get array length into t1
+    (check-array-bounds arg2 t1 aloc1illegal t3)
+    (srdi arg6 arg6 #.|ArrayElementTypePos| "get element type into arg6")
+    (ADDI arg4 arg4 1)
+    (ADD arg4 arg4 arg2)
+    (ANDI-DOT arg6 arg6 |ArrayElementTypeMask|)
+    (ADDI arg6 arg6 #.(- |array$K-elementtypeobject|))
+    (branch-if-nonzero arg6 aloc1notobject)
+    (stack-push-ir |TypeLocative| arg4 t1)
+    (ContinueToNextInstruction)
+  (label aloc1exception)
+    (li arg1 |TypeFixnum|)
+    (SetTag arg1 arg2 t1)
+    (ArrayTypeException arg3 aloc-1 t1 (array-access-type-check :binary))
+  (label aloc1illegal)
+    (illegal-operand (array-access-type-check :binary))
+  (label aloc1bounds)
+    (illegal-operand subscript-bounds-error)
+  (label aloc1notobject)
+    (illegal-operand aloc-non-object-array)
+  (immediate-handler |DoAloc1|)
+    (stack-pop2 arg3 arg4 "Get the array tag/data")
+    (B aloc1merge))
+
+
+(comment "Array register operations.")
+
+(define-instruction |DoSetup1DArray| :operand-from-stack-signed-immediate ()
+    (srdi arg2 arg1 32 "Get the tag")
+    (clrldi arg1 arg1 32 "and the data")
+    (clr t2 "Indicate not forcing 1d")
+    (setup-array-register setup-1d-array arg2 arg1 NextInstruction
+			  t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 t12 arg6 arg5 arg4 arg3)
+    (ContinueToNextInstruction))
+
+(define-instruction |DoSetupForce1DArray| :operand-from-stack-signed-immediate ()
+    (srdi arg2 arg1 32 "Get the tag")
+    (clrldi arg1 arg1 32 "and the data")
+    (li t2 1 "Indicate forcing 1d")
+    (setup-array-register setup-force-1d-array arg2 arg1 NextInstruction
+			  t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 t12 arg6 arg5 arg4 arg3)
+    (ContinueToNextInstruction))
+
+(define-fast-subroutine |Setup1DLongArray| (t3 t9) (r0)
+  (setup-long-array-register arg2 arg1 t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 t12
+			     arg6 arg5 arg4 arg3))
+
+
+;; |DoFastAref1| is in IFUNCOM2.PPCS
+
+(define-instruction |DoFastAset1| :operand-from-stack ()
+    (stack-pop2 arg3 arg4 "Index")
+    (stack-pop2 t10 t11 "value")
+    (checkDataType arg3 |TypeFixnum| fastaset1iop t1)
+  (label FastAset1Retry)
+    ;; Get control register, base, and length, as we do above.
+    (LWA arg6 4 (arg1))
+    (LWA t9  12 (arg1))
+    (LWA t3  20 (arg1))
+    (clrldi arg6 arg6 32)
+    (clrldi t9 t9 32)
+    (sldi t5 arg6 #.(- 64 |ArrayRegisterEventCountSize|))
+    (clrldi t3 t3 32)
+    (LD t4 PROCESSORSTATE_AREVENTCOUNT (ivory))
+    (srdi t5 t5 #.(- 64 |ArrayRegisterEventCountSize|))
+    (check-array-bounds arg4 t3 fastaset1bounds t2)
+    (SUBF t6 t5 t4)
+    (branch-if-nonzero t6 |Aset1RecomputeArrayRegister|)
+    (srdi t6 arg6 #.|ArrayRegisterBytePackingPos|)
+    (srdi t7 arg6 #.|ArrayRegisterByteOffsetPos|)
+    (srdi t8 arg6 #.|ArrayRegisterElementTypePos|)
+    (ANDI-DOT t6 t6 |ArrayRegisterBytePackingMask|)
+    (ANDI-DOT t7 t7 |ArrayRegisterByteOffsetMask|)
+    (ANDI-DOT t8 t8 |ArrayRegisterElementTypeMask|)
+    (aset-1-internal arg5 t9 t6 t7 t8 arg4 t10 t11  t1 t2 t3 t4 t5 t12 arg3)
+  (label fastaset1iop)
+    (illegal-operand fast-array-access-type-check)
+  (label fastaset1bounds)
+    (illegal-operand array-register-format-error-or-subscript-bounds-error))
+
+
+(comment "Array leaders.")
+
+(define-instruction |DoArrayLeader| :operand-from-stack-immediate (:own-immediate t)
+    (stack-pop2 arg3 arg4 "arg3=arraytag, arg4=arraydata")
+    (clrldi arg2 arg1 32 "index data")
+    (srdi arg1 arg1 32 "index tag")
+    (CheckDataType arg1 |TypeFixnum| arrayleaderiop t1)
+  (label arrayleadermerge)
+    ;; Array or String
+    (CheckAdjacentDataTypes arg3 |TypeArray| 2 arrayleaderexception t1)
+    (with-multiple-memory-reads (t9 t10 t11 t12)
+      (memory-read arg4 arg6 arg5 PROCESSORSTATE_HEADER t1 t2 t3 t4 nil t)
+      (check-array-header arg6 arrayleaderiop t1)
+      (srdi t8 arg5 #.|ArrayLeaderLengthFieldPos|)
+      (ANDI-DOT t8 t8 |ArrayLeaderLengthFieldMask|)
+      (check-array-bounds arg2 t8 arrayleaderbounds t1)
+      (SUBF arg2 arg2 arg4)
+      (ADDI arg2 arg2 -1)
+      (memory-read arg2 arg6 arg5 PROCESSORSTATE_DATAREAD t1 t2 t3 t4 nil t)
+      (stack-push2 arg6 arg5 t1)
+      (ContinueToNextInstruction))
+  (label arrayleaderexception)
+    ;; At this point, we know that the type of ARG2 is fixnum
+    (li arg1 |TypeFixnum|)
+    (SetTag arg1 arg2 t1)
+    (ArrayTypeException arg3 array-leader t1 (array-leader-access-type-check :binary))
+  (label arrayleaderiop)
+    (illegal-operand (array-leader-access-type-check :binary))
+  (label arrayleaderbounds)
+    (illegal-operand subscript-bounds-error)
+  (immediate-handler |DoArrayLeader|)
+    (stack-pop2 arg3 arg4 "arg3=arraytag, arg4=arraydata")
+    (B arrayleadermerge))
+
+(define-instruction |DoStoreArrayLeader| :operand-from-stack-immediate (:own-immediate t)
+    (stack-pop2 arg3 arg4 "arg3=arraytag, arg4=arraydata")
+    (stack-pop2 t6 t7 "t6=valuetag, t7=valuedata")
+    (clrldi arg2 arg1 32 "index data")
+    (srdi arg1 arg1 32 "index tag")
+    (checkDataType arg1 |TypeFixnum| storearrayleaderiop t1)
+  (label storearrayleadermerge)
+    (CheckAdjacentDataTypes arg3 |TypeArray| 2 storearrayleaderexception t1)
+    (with-multiple-memory-reads (t9 t10 t11 t12)
+      (memory-read arg4 arg6 arg5 PROCESSORSTATE_HEADER t1 t2 t3 t4 nil t)
+      (check-array-header arg6 storearrayleaderiop t1)
+      (srdi t2 arg5 #.|ArrayLeaderLengthFieldPos|)
+      (ANDI-DOT t2 t2 |ArrayLeaderLengthFieldMask|)
+      (check-array-bounds arg2 t2 storearrayleaderbounds t1)
+      (SUBF arg2 arg2 arg4)
+      (ADDI arg2 arg2 -1)
+      (store-contents arg2 t6 t7 PROCESSORSTATE_DATAWRITE t1 t2 t3 t4 t5 t8
+		      NextInstruction)
+      (ContinueToNextInstruction))
+  (label storearrayleaderexception)
+    (li arg1 |TypeFixnum|)
+    (SetTag arg1 arg2 t1)
+    (ArrayTypeException arg3 store-array-leader t1 (array-leader-access-type-check :three-argument))
+  (label storearrayleaderiop)
+    (illegal-operand (array-leader-access-type-check :three-argument))
+  (label storearrayleaderbounds)
+    (illegal-operand subscript-bounds-error)
+  (immediate-handler |DoStoreArrayLeader|)
+    (stack-pop2 arg3 arg4 "arg3=arraytag, arg4=arraydata")
+    (stack-pop2 t6 t7 "t6=valuetag, t7=valuedata")
+    (B storearrayleadermerge))
+
+(define-instruction |DoAlocLeader| :operand-from-stack-immediate (:own-immediate t)
+    (stack-pop2 arg3 arg4 "arg3=arraytag, arg4=arraydata")
+    (clrldi arg2 arg1 32 "index data")
+    (srdi arg1 arg1 32 "index tag")
+    (checkDataType arg1 |TypeFixnum| alocleaderiop t1)
+  (label alocleadermerge)
+    (CheckAdjacentDataTypes arg3 |TypeArray| 2 alocleaderexception t1)
+    (memory-read arg4 arg6 arg5 PROCESSORSTATE_HEADER t1 t2 t3 t4 nil t)
+    (check-array-header arg6 alocleaderiop t1)
+    (srdi t9 arg5 #.|ArrayLeaderLengthFieldPos|)
+    (ANDI-DOT t9 t9 |ArrayLeaderLengthFieldMask|)
+    (check-array-bounds arg2 t9 alocleaderbounds t1)
+    (SUBF arg2 arg2 arg4)
+    (ADDI arg2 arg2 -1)
+    (stack-push-ir |TypeLocative| arg2 t1)
+    (ContinueToNextInstruction)
+  (label alocleaderexception)
+    (li arg1 |TypeFixnum|)
+    (SetTag arg1 arg2 t1)
+    (ArrayTypeException arg3 aloc-leader t1 (array-leader-access-type-check :binary))
+  (label alocleaderiop)
+    (illegal-operand (array-leader-access-type-check :binary))
+  (label alocleaderbounds)
+    (illegal-operand subscript-bounds-error)
+  (immediate-handler |DoAlocLeader|)
+    (stack-pop2 arg3 arg4 "arg3=arraytag, arg4=arraydata")
+    (B alocleadermerge))
+
+(comment "Fin.")
+
+
