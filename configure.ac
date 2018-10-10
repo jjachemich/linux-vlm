@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 AC_PREREQ([2.69])
-AC_INIT([vlm], [0.99-1], [joachimq@achemich.de])
+AC_INIT([vlm], [0.99-1], [joachimq@jachemich.de])
 AM_INIT_AUTOMAKE
 #AC_CONFIG_SRCDIR([include/VLM_configuration.h])
 AC_CONFIG_HEADERS([config.h])
