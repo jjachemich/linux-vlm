@@ -780,7 +780,7 @@
   (or (eq str 'ocp) (eq str 'ecp) (eq str 'iCP) (equal str "iCP")))
 
 (defun cacheline-ptr-str (ptr)
-  (if (or (eq ptr 'iCP) (equal ptr "iCP")) 
+  (if (or (eq ptr 'iCP) (equal ptr "iCP"))
       "iCP"
     (string-downcase ptr)))
 
@@ -1514,25 +1514,25 @@
 	(FBEQ
 	 (check-comment arg3)
 	 (format destination "  if (FLTU64(~A, ~A) == 0.0)~%    goto ~A;~%"
-		 (regnum (fixarg arg1)) (fixarg arg1) 
+		 (regnum (fixarg arg1)) (fixarg arg1)
 		 (gotolabel arg2)))
 
 	(FBLT
 	 (check-comment arg3)
 	 (format destination "  if (FLTU64(~A, ~A) < 0.0)~%    goto ~A;~%"
-		 (regnum (fixarg arg1)) (fixarg arg1) 
+		 (regnum (fixarg arg1)) (fixarg arg1)
 		 (gotolabel arg2)))
 
 	(FBGT
 	 (check-comment arg3)
 	 (format destination "  if (FLTU64(~A, ~A) > 0.0)~%    goto ~A;~%"
-		 (regnum (fixarg arg1)) (fixarg arg1) 
+		 (regnum (fixarg arg1)) (fixarg arg1)
 		 (gotolabel arg2)))
 
 	(FBNE
 	 (check-comment arg3)
 	 (format destination "  if (FLTU64(~A, ~A) != 0.0)~%    goto ~A;~%"
-		 (regnum (fixarg arg1)) (fixarg arg1) 
+		 (regnum (fixarg arg1)) (fixarg arg1)
 		 (gotolabel arg2)))
 
 	(FCMOVGT
@@ -1556,7 +1556,7 @@
 
 	(JMP
 	 (check-comment arg4)
-	 (format destination "    goto *~A; /* jmp */~%"
+	 (format destination "    goto *((void *) ~A); /* jmp */~%"
 		 (fixarg arg2)))
 
 	(JSR
@@ -1679,7 +1679,7 @@
 	     (format destination "  LDS(~A, ~A, *(u32 *)~A );~%"
 		     (regnum (fixarg arg1)) (fixarg arg1) (fixarg arg3))
 	   (format destination "  LDS(~A, ~A, ~A->~A);~%"
-		   (regnum (fixarg arg1)) 
+		   (regnum (fixarg arg1))
 		   (fixarg arg1) (structptr arg3) (fixarg arg2))))
 
 	(LDT
@@ -1690,7 +1690,7 @@
 	     (format destination "  LDT(~A, ~A, *(u32 *)~A );~%"
 		     (regnum (fixarg arg1)) (fixarg arg1) (fixarg arg3))
 	   (format destination "  LDT(~A, ~A, ~A->~A);~%"
-		   (regnum (fixarg arg1)) 
+		   (regnum (fixarg arg1))
 		   (fixarg arg1) (structptr arg3) (fixarg arg2))))
 
 	(STS
@@ -1860,7 +1860,7 @@
 	 (fixarg arg2)
 	 (fixarg arg3))
 	 (setq *do-check-ratquo* t))
-	
+
 	(LIBMFLOOR
 	 (format destination
 		 "  /* use libc function floor for rounding-mode :down */~%")
@@ -1988,7 +1988,7 @@
 
 	(SRA
 	 (check-comment arg4)
-	 (setq shiftarg 
+	 (setq shiftarg
 	       (if (numberp arg2) (logand arg2 63)
 		 (format nil "(~A & 63)" (fixarg arg2))))
 	 (format destination "  ~A = (s64)~A >> ~A;~%"
@@ -1996,7 +1996,7 @@
 
 	(SRL
 	 (check-comment arg4)
-	 (setq shiftarg 
+	 (setq shiftarg
 	       (if (numberp arg2) (logand arg2 63)
 		 (format nil "(~A & 63)" (fixarg arg2))))
 	 (format destination "  ~A = ~A >> ~A;~%"
@@ -2004,7 +2004,7 @@
 
 	(SLL
 	 (check-comment arg4)
-	 (setq shiftarg 
+	 (setq shiftarg
 	       (if (numberp arg2) (logand arg2 63)
 		 (format nil "(~A & 63)" (fixarg arg2))))
 	 (format destination "  ~A = ~A << ~A;~%"
@@ -2159,7 +2159,7 @@
 
 	(RET
 	 (if (eq arg1 'zero)
-	     (format destination "  goto *~A; /* ret */~%" (fixarg arg2))
+	     (format destination "  goto *((void *) ~A); /* ret */~%" (fixarg arg2))
 	   (format t "*** RET w/arg1")))
 
 	(TAGTYPE
@@ -2190,7 +2190,7 @@
 		 (equal (ext:substring arg1 0 5) "#ifnd")
 		 (equal (ext:substring arg1 0 4) "#end"))
 	     (format destination "~A~%" arg1)))
-	     
+
 	(otherwise
 	 (format t "***UNKNOWN FORM: ~S~%" form))
 
@@ -2222,7 +2222,7 @@
 	(c-header tfs sourcefilename)
 	(do ((form (read sfs nil :eof) (read sfs nil :eof)))
 	    ((eq form :eof) nil)
-	  (when (consp form) 
+	  (when (consp form)
 	    (process-asm-form form tfs)))
 	(c-trailer tfs sourcefilename)))))
 
