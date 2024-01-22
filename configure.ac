@@ -28,7 +28,7 @@ AC_CHECK_LIB([X11], [XKeysymToKeycode],[],
 AC_CHECK_LIB([xcb], [xcb_disconnect],[:])
 AC_CHECK_LIB([c], [fprintf],[],
 		    [AC_MSG_ERROR([you need libc to compile the vlm])])
-AC_CHECK_LIB([crypt], [encrypt],[],
+AC_CHECK_LIB([crypt], [crypt],[],
 		    [AC_MSG_ERROR([you need libcrypt to compile the vlm])])
 AC_CHECK_LIB([dl], [dlopen],[],
 		    [AC_MSG_ERROR([you need libdl to compile the vlm])])
@@ -84,7 +84,7 @@ AC_ARG_ENABLE([debug],
 	 [enable debuggeable code (-g2) (default=no)]),
 	[],
 	[enable_debug=no])
-if ! test -z $enable_debug && 
+if ! test -z $enable_debug &&
     test "x$enable_debug" = "xyes"
 then
     AS_ECHO(["enabling debugging"])
@@ -104,7 +104,7 @@ if ! test -z $enable_fast &&
 then
     AS_ECHO(["disabling optimization for speed"])
     AX_CFLAGS_GCC_OPTION(-O2)
-else	
+else
     AS_ECHO(["enabling optimization for speed"])
     AX_CFLAGS_GCC_OPTION(-Ofast)
 fi
@@ -123,7 +123,7 @@ if ! test -z $enable_genera &&
     test "x$enable_genera" = "xno"
 then
     AS_ECHO(["disabling compilation for genera"])
-else	
+else
     AS_ECHO(["enabling compilation for genera"])
     CPPFLAGS+=" -DGENERA -DAUTOSTART"
 fi
@@ -152,7 +152,7 @@ if ! test -z $enable_debug_network &&
 then
     AS_ECHO(["enabling network debugging"])
     CPPFLAGS+=" -DDEBUG_NETWORK=1"
-else	
+else
     AS_ECHO(["disabling network debugging"])
 fi
 
@@ -169,7 +169,7 @@ then
     then
 	AS_ECHO(["enabling IP network debugging"])
 	CPPFLAGS+=" -DDEBUG_IP=1"
-    else	
+    else
 	AS_ECHO(["disabling IP network debugging"])
     fi
 else
@@ -193,7 +193,7 @@ then
     then
 	AS_ECHO(["enabling CHAOS network debugging"])
 	CPPFLAGS+=" -DDEBUG_CHAOS=1"
-    else	
+    else
 	AS_ECHO(["disabling CHAOS network debugging"])
     fi
 else
@@ -217,7 +217,7 @@ then
     then
 	AS_ECHO(["enabling ARP network debugging"])
 	CPPFLAGS+=" -DDEBUG_ARP=1"
-    else	
+    else
 	AS_ECHO(["disabling ARP network debugging"])
     fi
 else
@@ -242,7 +242,7 @@ then
 	AC_MSG_WARN([enabling IP network debugging to enable ICMP debugging])
 	AS_ECHO(["enabling ICMP network debugging"])
 	CPPFLAGS+=" -DDEBUG_IP -DDEBUG_ICMP=1"
-    else	
+    else
 	AS_ECHO(["disabling ICMP network debugging"])
     fi
 else
@@ -268,7 +268,7 @@ fi
 
 AC_CONFIG_FILES([Makefile
 	src/Makefile
-	emulator/Makefile 
-	life-support/Makefile 
+	emulator/Makefile
+	life-support/Makefile
 	stub/Makefile])
 AC_OUTPUT
